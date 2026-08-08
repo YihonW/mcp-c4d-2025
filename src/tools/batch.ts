@@ -10,15 +10,28 @@ export const batchTool = defineTool({
   group: "script",
   title: "Batch Execute",
   description:
-    "Run many generic ops in one RPC. Each op is applied in order; by default failures are recorded per op and the batch continues. The whole batch is wrapped in a single undo group. Useful for 'apply X to all matching entities' workflows (pair with list_entities + name_pattern to get handles).",
+    "Run many generic ops in one main-thread RPC. Each op is applied in order; by default failures are recorded per op and the batch continues. The whole batch is wrapped in a single undo group unless undo_group=false. Pass document_name to bind every active-document operation to one uniquely named open document and restore the prior active document afterward.",
   inputShape: {
+    document_name: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Optional unique open-document name. The bridge activates it atomically for this batch and restores the prior active document in finally.",
+      ),
+    undo_group: z
+      .boolean()
+      .optional()
+      .describe(
+        "Wrap the batch in one outer undo group (default true). Set false when ops include undo or mix reads/renders/saves with independently undo-wrapped mutations.",
+      ),
     ops: z
       .array(
         z.object({
           op: z
             .string()
             .describe(
-              "Handler name: set_params, create_entity, set_keyframe, remove_entity, describe, get_params, get_container, list_entities, set_document, exec_python. (batch itself is not allowed inside batch.)",
+              "Registered bridge handler name. `batch` itself is not allowed inside batch.",
             ),
           args: z
             .record(z.string(), z.unknown())

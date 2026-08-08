@@ -4,18 +4,19 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-64 tools across 16 groups.
+65 tools across 16 groups.
 
 ## Basics
 
 Connectivity + top-level document actions.
 
-| Tool             | Description                                                                        |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `ping`           | Check connectivity to the Cinema 4D bridge plugin.                                 |
-| `render`         | Render the active Cinema 4D document at its currently-active render data settings. |
-| `preview_render` | Quick agent-friendly verification render.                                          |
-| `reset_scene`    | Clear scene state in one RPC.                                                      |
+| Tool               | Description                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| `ping`             | Check connectivity to the Cinema 4D bridge plugin.                                 |
+| `get_capabilities` | Report the Cinema 4D runtime, security posture, and available capabilities.        |
+| `render`           | Render the active Cinema 4D document at its currently-active render data settings. |
+| `preview_render`   | Quick agent-friendly verification render.                                          |
+| `reset_scene`      | Clear scene state in one RPC.                                                      |
 
 ## Script-style
 
@@ -27,7 +28,7 @@ Escape hatches when a typed tool doesn't fit, plus undo-grouped multi-op.
 | `call_command` | Invoke a Cinema 4D command by plugin id via c4d.CallCommand().                 |
 | `list_plugins` | Generalized plugin enumerator.                                                 |
 | `undo`         | Pop up to `steps` entries off the active document's undo stack via doc.DoUndo. |
-| `batch`        | Run many generic ops in one RPC.                                               |
+| `batch`        | Run many generic ops in one main-thread RPC.                                   |
 
 ## Generic CRUD
 

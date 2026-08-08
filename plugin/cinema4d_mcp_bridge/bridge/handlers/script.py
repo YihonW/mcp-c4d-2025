@@ -202,6 +202,12 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
       ops: [{op: "<handler_name>", args: {...}}, ...]
       stop_on_error: bool (default False). When False, individual failures
         are recorded in the per-op result but the batch keeps running.
+      document_name: optional unique open-document name. The named document is
+        made active only for this main-thread dispatch; the prior active
+        document is restored in finally.
+      undo_group: bool (default True). Set False when the batch itself invokes
+        undo or combines read/render/save operations with independently
+        undo-wrapped mutations.
 
     Returns: {"results": [{index, op, result? | error?}, ...]}
     """
@@ -210,18 +216,42 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
 
     ops = params.get("ops") or []
     stop = bool(params.get("stop_on_error", False))
+    use_undo_group = bool(params.get("undo_group", True))
     if not isinstance(ops, list):
         raise ValueError("ops must be a list")
 
-    doc = documents.GetActiveDocument()
-    # Wrap the whole batch in one undo group so a single Ctrl+Z reverts it.
-    # Inner handlers call StartUndo/EndUndo too — nested calls coalesce into
-    # the outer group in C4D's undo system.
-    if doc is not None:
-        doc.StartUndo()
+    previous_doc = documents.GetActiveDocument()
+    document_name = params.get("document_name")
+    scoped = document_name is not None
+    doc = previous_doc
+    if scoped:
+        if not isinstance(document_name, str) or not document_name:
+            raise ValueError("document_name must be a non-empty string")
+        matches = []
+        current = documents.GetFirstDocument()
+        while current is not None:
+            if (current.GetDocumentName() or "") == document_name:
+                matches.append(current)
+            current = current.GetNext()
+        if not matches:
+            raise ValueError(f"no open document named {document_name!r}")
+        if len(matches) > 1:
+            raise ValueError(
+                f"{len(matches)} open documents named {document_name!r}; "
+                "document_name must be unique"
+            )
+        doc = matches[0]
 
     results: list[dict[str, Any]] = []
+    undo_started = False
     try:
+        if scoped and documents.GetActiveDocument() is not doc:
+            documents.SetActiveDocument(doc)
+        # Default behavior remains one outer undo group. Inner handlers may
+        # create nested groups, which C4D coalesces into this outer group.
+        if use_undo_group and doc is not None:
+            doc.StartUndo()
+            undo_started = True
         for i, op in enumerate(ops):
             if not isinstance(op, dict):
                 results.append({"index": i, "error": f"ops[{i}] must be a dict"})
@@ -249,7 +279,17 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 if stop:
                     break
     finally:
-        if doc is not None:
-            doc.EndUndo()
+        try:
+            if undo_started:
+                doc.EndUndo()
+        finally:
+            if scoped and previous_doc is not None:
+                current = documents.GetFirstDocument()
+                while current is not None and current is not previous_doc:
+                    current = current.GetNext()
+                if current is previous_doc and documents.GetActiveDocument() is not previous_doc:
+                    documents.SetActiveDocument(previous_doc)
+            if scoped:
+                c4d.EventAdd()
 
     return {"results": results, "count": len(results)}

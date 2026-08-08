@@ -12,6 +12,29 @@ const SERVER_ENTRY = path.join(REPO_ROOT, "dist", "index.js");
 
 export const TEST_PREFIX = "e2e_";
 
+type ToolCaller = {
+  call<T = unknown>(name: string, args?: Record<string, unknown>): Promise<T>;
+};
+
+/** Force-close one uniquely named test document; absence is the only ignored case. */
+export async function closeDocumentIfPresent(
+  client: ToolCaller,
+  documentName: string,
+): Promise<boolean> {
+  const listed = await client.call<{
+    documents: Array<{ name: string }>;
+  }>("list_documents", {});
+  const matches = (listed.documents ?? []).filter((document) => document.name === documentName);
+  if (matches.length === 0) return false;
+  if (matches.length > 1) {
+    throw new Error(
+      `refusing to close ${matches.length} documents named ${JSON.stringify(documentName)}`,
+    );
+  }
+  await client.call("close_document", { name: documentName, force: true });
+  return true;
+}
+
 type BridgeProbeDecision = {
   ready: boolean;
   reason?: string;
