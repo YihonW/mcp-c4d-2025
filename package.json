@@ -56,6 +56,7 @@
     "lint:py:fix": "uvx ruff@0.15.11 check --fix",
     "format:py": "uvx ruff@0.15.11 format",
     "format:py:check": "uvx ruff@0.15.11 format --check",
+    "install:c4d": "node scripts/install-c4d-plugin.mjs",
     "docs:tools": "npm run build && node scripts/generate-tools-doc.mjs",
     "docs:tools:check": "npm run build && node scripts/generate-tools-doc.mjs --check",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run lint:py && npm run format:py:check && npm run docs:tools:check",
