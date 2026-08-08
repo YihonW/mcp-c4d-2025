@@ -4,7 +4,9 @@ import { describe, expect, test } from "vitest";
 import type { C4DClient } from "../../src/c4d-client.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import { rsCreateMaterialTool } from "../../src/tools/rs-create-material.js";
+import { rsCreateLightTool } from "../../src/tools/rs-create-light.js";
 import { rsGetCapabilitiesTool } from "../../src/tools/rs-get-capabilities.js";
+import { rsSetCameraTool } from "../../src/tools/rs-set-camera.js";
 import {
   rsSetMaterialPbrInput,
   rsSetMaterialPbrTool,
@@ -59,6 +61,75 @@ describe("rs_create_material", () => {
     expect(rsCreateMaterialTool.group).toBe("redshift");
     expect(client.requests).toEqual([
       { command: "rs_create_material", params: args, timeoutMs: 30_000 },
+    ]);
+  });
+});
+
+describe("rs_create_light", () => {
+  test("validates exact light input ranges and fixed transform tuples", () => {
+    const input = z.object(rsCreateLightTool.inputShape);
+
+    expect(input.safeParse({ name: "RS_Area", type: "area", color: [0, 0.5, 1] }).success).toBe(
+      true,
+    );
+    expect(input.safeParse({ name: "RS_Area", type: "area", color: [0, 0.5, 1.01] }).success).toBe(
+      false,
+    );
+    expect(input.safeParse({ name: "RS_Area", type: "area", intensity: 0 }).success).toBe(false);
+    expect(input.safeParse({ name: "RS_Area", type: "area", position: [1, 2] }).success).toBe(
+      false,
+    );
+    expect(
+      input.safeParse({ name: "RS_Area", type: "area", rotation: [0, 1, Number.NaN] }).success,
+    ).toBe(false);
+  });
+
+  test("is registered and forwards the exact light request with a 30-second timeout", async () => {
+    const client = new FakeC4DClient();
+    const args = {
+      document_name: "scene",
+      name: "RS_Dome",
+      type: "dome" as const,
+      dome_texture: "C:/textures/dome.exr",
+    };
+
+    await rsCreateLightTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsCreateLightTool);
+    expect(rsCreateLightTool.group).toBe("redshift");
+    expect(client.requests).toEqual([
+      { command: "rs_create_light", params: args, timeoutMs: 30_000 },
+    ]);
+  });
+});
+
+describe("rs_set_camera", () => {
+  test("validates positive camera parameters, finite transforms, and optional update fields", () => {
+    const input = z.object(rsSetCameraTool.inputShape);
+
+    expect(input.safeParse({ name: "RS_Camera", exposure: -2, shutter_time: 0.25 }).success).toBe(
+      true,
+    );
+    expect(input.safeParse({ name: "RS_Camera", shutter_time: 0 }).success).toBe(false);
+    expect(input.safeParse({ name: "RS_Camera", focus_distance: -1 }).success).toBe(false);
+    expect(input.safeParse({ name: "RS_Camera", f_stop: Number.POSITIVE_INFINITY }).success).toBe(
+      false,
+    );
+    expect(input.safeParse({ name: "RS_Camera", position: [1, 2, Number.NaN] }).success).toBe(
+      false,
+    );
+  });
+
+  test("is registered and forwards the exact camera request with a 30-second timeout", async () => {
+    const client = new FakeC4DClient();
+    const args = { document_name: "scene", name: "RS_Camera", update_if_exists: true, f_stop: 2.8 };
+
+    await rsSetCameraTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsSetCameraTool);
+    expect(rsSetCameraTool.group).toBe("redshift");
+    expect(client.requests).toEqual([
+      { command: "rs_set_camera", params: args, timeoutMs: 30_000 },
     ]);
   });
 });
