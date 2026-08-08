@@ -20,7 +20,7 @@ if _PLUGIN_DIR not in sys.path:
 
 try:
     from bridge.dispatcher import Dispatcher
-    from bridge.handlers import HANDLERS
+    from bridge.handlers import HANDLERS, configure_security_snapshot
     from bridge.server import BridgeServer
 except Exception:
     print("[cinema4d_mcp_bridge] failed to import bridge package:")
@@ -46,6 +46,7 @@ class MCPBridgePlugin(plugins.MessageData):
         )
         token = (os.environ.get("C4D_MCP_TOKEN") or "").strip() or None
         self._server = BridgeServer(self._dispatcher, host=host, port=port, token=token)
+        configure_security_snapshot(host, token)
 
     def CoreMessage(self, msg_id, bc):
         if msg_id == PLUGIN_ID:

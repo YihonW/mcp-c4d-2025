@@ -16,6 +16,13 @@ from ._helpers import _require_writable_path
 _BRIDGE_VERSION = "0.4.0"
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_security_snapshot = (True, False)
+
+
+def configure_security_snapshot(host: str, token: str | None) -> None:
+    """Capture the host/token state used to construct the bridge server."""
+    global _security_snapshot
+    _security_snapshot = (host in _LOOPBACK_HOSTS, bool(token))
 
 
 def _available_renderer_plugins() -> list[dict[str, Any]]:
@@ -54,9 +61,8 @@ def _available_renderer_plugins() -> list[dict[str, Any]]:
 
 def handle_get_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
     """Describe the running bridge without assuming optional SDK symbols."""
-    host = os.environ.get("C4D_MCP_HOST") or os.environ.get("C4D_MCP_BRIDGE_HOST") or "127.0.0.1"
-    token = (os.environ.get("C4D_MCP_TOKEN") or "").strip()
     exec_python = os.environ.get("C4D_MCP_ENABLE_EXEC_PYTHON", "").strip().lower() in _TRUTHY
+    loopback, token_required = _security_snapshot
 
     base_document = getattr(documents, "BaseDocument", None)
     version = sys.version_info
@@ -66,8 +72,8 @@ def handle_get_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
         "platform": sys.platform,
         "bridge_version": _BRIDGE_VERSION,
         "security": {
-            "loopback": host in _LOOPBACK_HOSTS,
-            "token_required": bool(token),
+            "loopback": loopback,
+            "token_required": token_required,
             "exec_python": exec_python,
         },
         "groups": ["basics", "entities", "transform"],

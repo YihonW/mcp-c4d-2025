@@ -44,6 +44,7 @@ from .animation import (
     handle_set_keyframe,
 )
 from .basics import (
+    configure_security_snapshot,
     handle_get_capabilities,
     handle_ping,
     handle_render,
@@ -201,4 +202,4 @@ HANDLERS = {
     "remove_xpresso_node": handle_remove_xpresso_node,
 }
 
-__all__ = ["HANDLERS"]
+__all__ = ["HANDLERS", "configure_security_snapshot"]
