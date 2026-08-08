@@ -7,10 +7,12 @@ import { rsCreateMaterialTool } from "../../src/tools/rs-create-material.js";
 import { rsCreateLightTool } from "../../src/tools/rs-create-light.js";
 import { rsGetCapabilitiesTool } from "../../src/tools/rs-get-capabilities.js";
 import { rsSetCameraTool } from "../../src/tools/rs-set-camera.js";
+import { rsListAovsTool } from "../../src/tools/rs-list-aovs.js";
 import {
   rsSetMaterialPbrInput,
   rsSetMaterialPbrTool,
 } from "../../src/tools/rs-set-material-pbr.js";
+import { rsUpsertAovInput, rsUpsertAovTool } from "../../src/tools/rs-upsert-aov.js";
 
 class FakeC4DClient {
   readonly requests: Array<{
@@ -206,5 +208,53 @@ describe("rs_set_material_pbr", () => {
       ),
     ).rejects.toThrow(/document_name/);
     expect(client.requests).toEqual([]);
+  });
+});
+
+describe("Redshift AOV tools", () => {
+  test("list is registered and forwards its optional document and RenderData selection", async () => {
+    const client = new FakeC4DClient();
+    const args = { document_name: "scene", render_data_name: "Final" };
+
+    await rsListAovsTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsListAovsTool);
+    expect(rsListAovsTool.group).toBe("redshift");
+    expect(client.requests).toEqual([{ command: "rs_list_aovs", params: args, timeoutMs: 10_000 }]);
+  });
+
+  test("upsert accepts a trimmed alias or integer and guards an enabled direct output path", () => {
+    const input = rsUpsertAovInput;
+
+    expect(input.parse({ type: "  beauty  ", name: "  Beauty  " })).toEqual({
+      type: "beauty",
+      name: "Beauty",
+    });
+    expect(input.safeParse({ type: 44, name: "Custom" }).success).toBe(true);
+    expect(input.safeParse({ type: 1.25, name: "Custom" }).success).toBe(false);
+    expect(
+      input.safeParse({ type: "beauty", name: "Beauty", direct_file_enabled: true }).success,
+    ).toBe(false);
+    expect(
+      input.safeParse({
+        type: "beauty",
+        name: "Beauty",
+        direct_file_enabled: true,
+        direct_file_path: "C:/renders/beauty.exr",
+      }).success,
+    ).toBe(true);
+  });
+
+  test("upsert is registered and forwards an unmodified AOV request", async () => {
+    const client = new FakeC4DClient();
+    const args = { type: "beauty", name: "Beauty", params: { "9001": 1.5 } };
+
+    await rsUpsertAovTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsUpsertAovTool);
+    expect(rsUpsertAovTool.group).toBe("redshift");
+    expect(client.requests).toEqual([
+      { command: "rs_upsert_aov", params: args, timeoutMs: 30_000 },
+    ]);
   });
 });

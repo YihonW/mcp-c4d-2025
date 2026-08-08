@@ -57,6 +57,8 @@ import { rsCreateMaterialTool } from "./rs-create-material.js";
 import { rsCreateLightTool } from "./rs-create-light.js";
 import { rsSetCameraTool } from "./rs-set-camera.js";
 import { rsSetMaterialPbrTool } from "./rs-set-material-pbr.js";
+import { rsListAovsTool } from "./rs-list-aovs.js";
+import { rsUpsertAovTool } from "./rs-upsert-aov.js";
 import { sampleTransformTool } from "./sample-transform.js";
 import { saveDocumentTool } from "./save-document.js";
 import { setActiveDocumentTool } from "./set-active-document.js";
@@ -175,6 +177,8 @@ export const ALL_TOOLS: AnyTool[] = [
   rsCreateLightTool,
   rsSetCameraTool,
   rsSetMaterialPbrTool,
+  rsListAovsTool,
+  rsUpsertAovTool,
 ];
 
 /**
