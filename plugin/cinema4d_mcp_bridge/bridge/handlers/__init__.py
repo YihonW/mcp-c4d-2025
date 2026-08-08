@@ -44,6 +44,7 @@ from .animation import (
     handle_set_keyframe,
 )
 from .basics import (
+    handle_get_capabilities,
     handle_ping,
     handle_render,
     handle_reset_scene,
@@ -131,6 +132,7 @@ from .xpresso import (
 
 HANDLERS = {
     "ping": handle_ping,
+    "get_capabilities": handle_get_capabilities,
     "undo": handle_undo,
     "render": handle_render,
     "preview_render": handle_preview_render,

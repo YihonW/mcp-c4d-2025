@@ -20,6 +20,7 @@ import { deleteTrackTool } from "./delete-track.js";
 import { describeTool } from "./describe.js";
 import { dumpShaderTool } from "./dump-shader.js";
 import { execPythonEnabled, execPythonTool } from "./exec-python.js";
+import { getCapabilitiesTool } from "./get-capabilities.js";
 import { getContainerTool } from "./get-container.js";
 import { getDocumentStateTool } from "./get-document-state.js";
 import { getGraphInfoTool } from "./get-graph-info.js";
@@ -82,6 +83,7 @@ export type AnyTool = {
 export const ALL_TOOLS: AnyTool[] = [
   // Basics
   pingTool,
+  getCapabilitiesTool,
   renderTool,
   previewRenderTool,
   resetSceneTool,

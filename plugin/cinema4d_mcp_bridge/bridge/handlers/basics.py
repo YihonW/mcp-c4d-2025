@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import sys
 import tempfile
 from typing import Any
 
@@ -11,6 +12,71 @@ import c4d
 from c4d import documents
 
 from ._helpers import _require_writable_path
+
+_BRIDGE_VERSION = "0.4.0"
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _available_renderer_plugins() -> list[dict[str, Any]]:
+    """Return video-post identifiers when the optional plugin API is present."""
+    plugin_api = getattr(c4d, "plugins", None)
+    filter_plugins = getattr(plugin_api, "FilterPluginList", None)
+    find_plugin = getattr(plugin_api, "FindPlugin", None)
+    plugin_type = getattr(c4d, "PLUGINTYPE_VIDEOPOST", None)
+    if not callable(filter_plugins) or not isinstance(plugin_type, int):
+        return []
+
+    try:
+        candidates = filter_plugins(plugin_type, True) or []
+    except Exception:
+        return []
+
+    detected: list[dict[str, Any]] = []
+    for candidate in candidates:
+        try:
+            get_id = getattr(candidate, "GetID", None)
+            if not callable(get_id):
+                continue
+            plugin_id = int(get_id())
+            plugin = candidate
+            if callable(find_plugin):
+                plugin = find_plugin(plugin_id, plugin_type)
+                if plugin is None:
+                    continue
+            get_name = getattr(plugin, "GetName", None)
+            name = get_name() if callable(get_name) else ""
+            detected.append({"id": plugin_id, "name": str(name or "")})
+        except Exception:
+            continue
+    return detected
+
+
+def handle_get_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
+    """Describe the running bridge without assuming optional SDK symbols."""
+    host = os.environ.get("C4D_MCP_HOST") or os.environ.get("C4D_MCP_BRIDGE_HOST") or "127.0.0.1"
+    token = (os.environ.get("C4D_MCP_TOKEN") or "").strip()
+    exec_python = os.environ.get("C4D_MCP_ENABLE_EXEC_PYTHON", "").strip().lower() in _TRUTHY
+
+    base_document = getattr(documents, "BaseDocument", None)
+    version = sys.version_info
+    return {
+        "c4d_version": c4d.GetC4DVersion(),
+        "python_version": f"{version.major}.{version.minor}.{version.micro}",
+        "platform": sys.platform,
+        "bridge_version": _BRIDGE_VERSION,
+        "security": {
+            "loopback": host in _LOOPBACK_HOSTS,
+            "token_required": bool(token),
+            "exec_python": exec_python,
+        },
+        "groups": ["basics", "entities", "transform"],
+        "features": {
+            "node_materials": getattr(c4d, "NodeMaterial", None) is not None,
+            "scene_nodes": callable(getattr(base_document, "GetSceneRepository", None)),
+        },
+        "plugins": _available_renderer_plugins(),
+    }
 
 
 def handle_ping(_params: dict[str, Any]) -> dict[str, Any]:
