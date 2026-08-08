@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createRequire } from "node:module";
 import { C4DClient } from "./c4d-client.js";
 import { TOOLS, type AnyTool } from "./tools/index.js";
 import { execPythonEnabled } from "./tools/exec-python.js";
+
+const packageJson = createRequire(import.meta.url)("../package.json") as { version: string };
 
 // Prefer the unified C4D_MCP_* pair so one variable change reaches both sides.
 // Fall back to the legacy C4D_BRIDGE_* names for existing configs.
@@ -18,8 +21,8 @@ if (!Number.isFinite(port) || port <= 0 || port > 65535) {
 const client = new C4DClient({ host, port, token });
 
 const server = new McpServer({
-  name: "mcp-cinema4d",
-  version: "0.1.0",
+  name: "mcp-c4d-2025",
+  version: packageJson.version,
 });
 
 function register(tool: AnyTool): void {

@@ -1,5 +1,5 @@
 {
-  "name": "@kumoproductions/mcp-cinema4d",
+  "name": "mcp-c4d-2025",
   "version": "0.3.1",
   "description": "TypeScript MCP server for Cinema 4D with generic entity CRUD, parameter-level access, undo-grouped batch ops, and security controls.",
   "keywords": [
@@ -27,7 +27,7 @@
     "url": "git+https://github.com/kumoproductions/mcp-cinema4d.git"
   },
   "bin": {
-    "mcp-cinema4d": "dist/index.js"
+    "mcp-c4d-2025": "dist/index.js"
   },
   "files": [
     "dist",
@@ -79,5 +79,5 @@
   "engines": {
     "node": ">=24.0.0"
   },
-  "mcpName": "io.github.kumoproductions/mcp-cinema4d"
+  "mcpName": "mcp-c4d-2025"
 }

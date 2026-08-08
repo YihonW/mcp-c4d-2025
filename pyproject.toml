@@ -1,5 +1,5 @@
 [tool.ruff]
-# Python side targets Cinema 4D's embedded interpreter (Python 3.11 on C4D 2026).
+# Python side targets Cinema 4D's embedded interpreter (Python 3.11 on C4D 2025).
 target-version = "py311"
 line-length = 100
 src = ["plugin"]
