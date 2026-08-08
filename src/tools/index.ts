@@ -52,6 +52,7 @@ import { removeUserDataTool } from "./remove-user-data.js";
 import { removeXpressoNodeTool } from "./remove-xpresso-node.js";
 import { renderTool } from "./render.js";
 import { resetSceneTool } from "./reset-scene.js";
+import { rsGetCapabilitiesTool } from "./rs-get-capabilities.js";
 import { sampleTransformTool } from "./sample-transform.js";
 import { saveDocumentTool } from "./save-document.js";
 import { setActiveDocumentTool } from "./set-active-document.js";
@@ -164,6 +165,8 @@ export const ALL_TOOLS: AnyTool[] = [
   setLayerFlagsTool,
   // Document state
   getDocumentStateTool,
+  // Redshift
+  rsGetCapabilitiesTool,
 ];
 
 /**

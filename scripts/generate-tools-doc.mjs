@@ -57,6 +57,11 @@ const GROUP_META = [
   { id: "mograph", title: "MoGraph", blurb: "Read derived MoGraph state." },
   { id: "animation", title: "Animation", blurb: "Enumerate CTracks and edit keyframes." },
   { id: "layers", title: "Layers", blurb: "LayerObject CRUD and per-layer flag toggles." },
+  {
+    id: "redshift",
+    title: "Redshift",
+    blurb: "Validated high-level Redshift materials, lights, cameras, AOVs, and renders.",
+  },
 ];
 
 // First-line summary for the table. Keep tool source descriptions free-form;
