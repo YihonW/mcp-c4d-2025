@@ -16,6 +16,12 @@ const SUITE = "foundation-2025";
 const CUBE_NAME = "e2e_foundation_cube";
 const TARGET_POSITION = [100, 20, -30];
 const strictLive = process.env.C4D_MCP_REQUIRE_LIVE === "1";
+const truthyEnvironmentValue = (value: string | undefined) =>
+  ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
+const expectedSecurity = {
+  tokenRequired: Boolean(process.env.C4D_MCP_TOKEN?.trim()),
+  execPython: truthyEnvironmentValue(process.env.C4D_MCP_ENABLE_EXEC_PYTHON),
+};
 
 const probe = await probeBridge(SUITE);
 let client: MCPTestClient | null = probe.client ?? null;
@@ -23,10 +29,17 @@ let is2025 = false;
 
 if (probe.ready) {
   try {
-    const capabilities = await client!.call<{ c4d_version: number }>("get_capabilities");
+    const capabilities = await client!.call<{
+      c4d_version: number;
+      display_version: string;
+      compatibility: string;
+      platform: string;
+      bridge_version: string;
+      security: { loopback: boolean; token_required: boolean; exec_python: boolean };
+    }>("get_capabilities");
     is2025 = Math.floor(capabilities.c4d_version / 1000) === 2025;
     if (strictLive) {
-      requireLiveBridge(probe, capabilities);
+      requireLiveBridge(probe, capabilities, expectedSecurity);
     } else if (!is2025) {
       printSkipBanner(
         SUITE,
@@ -57,6 +70,20 @@ type BatchEntry = {
   error?: string;
 };
 
+type DocumentEntry = {
+  index: number;
+  name: string;
+  path: string;
+  active: boolean;
+};
+
+type DocumentList = {
+  documents: DocumentEntry[];
+  count: number;
+};
+
+const withoutTransientIndex = ({ index: _index, ...document }: DocumentEntry) => document;
+
 describe.skipIf(!ready)("Cinema 4D 2025 foundation", () => {
   const c = client!;
 
@@ -72,6 +99,12 @@ describe.skipIf(!ready)("Cinema 4D 2025 foundation", () => {
   test("creates, transforms, verifies, undoes, previews, and saves a temporary scene", async () => {
     const previewPath = path.join(workDir, "foundation-preview.png");
     const scenePath = path.join(workDir, "foundation-scene.c4d");
+    const originalDocuments = await c.call<DocumentList>("list_documents");
+    const originalActiveDocuments = originalDocuments.documents.filter(
+      (document) => document.active,
+    );
+    expect(originalActiveDocuments).toHaveLength(1);
+    const originalActiveDocument = originalActiveDocuments[0];
 
     creationAttempted = true;
     try {
@@ -80,6 +113,45 @@ describe.skipIf(!ready)("Cinema 4D 2025 foundation", () => {
         make_active: false,
       });
       expect(createdDocument.switched).toBe(false);
+
+      const afterCreate = await c.call<DocumentList>("list_documents");
+      expect(afterCreate.count).toBe(originalDocuments.count + 1);
+      expect(
+        afterCreate.documents.filter((document) => document.active).map(withoutTransientIndex),
+      ).toEqual([withoutTransientIndex(originalActiveDocument)]);
+      expect(afterCreate.documents).toContainEqual(
+        expect.objectContaining({ name: documentName, active: false }),
+      );
+
+      const failingBatch = await c.call<{ results: BatchEntry[]; count: number }>("batch", {
+        document_name: documentName,
+        undo_group: false,
+        stop_on_error: true,
+        ops: [
+          {
+            op: "sample_transform",
+            args: {
+              handle: { kind: "object", name: `${CUBE_NAME}_missing` },
+              frames: [0],
+              space: "local",
+            },
+          },
+        ],
+      });
+      expect(failingBatch.count).toBe(1);
+      expect(failingBatch.results[0].error).toMatch(/resolve|BaseObject/i);
+
+      const afterHandlerError = await c.call<DocumentList>("list_documents");
+      expect(
+        afterHandlerError.documents
+          .filter((document) => document.active)
+          .map(withoutTransientIndex),
+      ).toEqual([withoutTransientIndex(originalActiveDocument)]);
+      expect(
+        afterHandlerError.documents
+          .filter((document) => document.name !== documentName)
+          .map(withoutTransientIndex),
+      ).toEqual(originalDocuments.documents.map(withoutTransientIndex));
 
       const batch = await c.call<{ results: BatchEntry[]; count: number }>(
         "batch",
@@ -146,6 +218,18 @@ describe.skipIf(!ready)("Cinema 4D 2025 foundation", () => {
       expect(batch.results).toHaveLength(10);
       expect(batch.results.filter((entry) => entry.error !== undefined)).toEqual([]);
 
+      const afterSuccessfulBatch = await c.call<DocumentList>("list_documents");
+      expect(
+        afterSuccessfulBatch.documents
+          .filter((document) => document.active)
+          .map(withoutTransientIndex),
+      ).toEqual([withoutTransientIndex(originalActiveDocument)]);
+      expect(
+        afterSuccessfulBatch.documents
+          .filter((document) => document.name !== documentName)
+          .map(withoutTransientIndex),
+      ).toEqual(originalDocuments.documents.map(withoutTransientIndex));
+
       const before = batch.results[1].result as { samples: Array<{ pos: number[] }> };
       const transformed = batch.results[3].result as { samples: Array<{ pos: number[] }> };
       expect(transformed.samples[0].pos).toEqual(TARGET_POSITION);
@@ -185,8 +269,12 @@ describe.skipIf(!ready)("Cinema 4D 2025 foundation", () => {
       expect(saved.format).toBe("c4d");
       expect(saved.copy).toBe(true);
       expect(existsSync(scenePath)).toBe(true);
-    } finally {
+
       await closeDocumentIfPresent(c, documentName);
+      creationAttempted = false;
+      expect(await c.call<DocumentList>("list_documents")).toEqual(originalDocuments);
+    } finally {
+      if (creationAttempted) await closeDocumentIfPresent(c, documentName);
     }
   });
 });

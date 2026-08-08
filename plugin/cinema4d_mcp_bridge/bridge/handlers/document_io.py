@@ -29,6 +29,38 @@ from ._helpers import (
 )
 
 
+def _insert_document(doc: Any, make_active: bool) -> bool:
+    """Insert ``doc`` while honoring a request to preserve the active document.
+
+    Cinema 4D implicitly activates inserted documents and destroys an empty
+    active document during insertion. Refuse the unsafe empty-document case
+    before mutation; otherwise restore and verify the previous focus.
+    """
+    previous = documents.GetActiveDocument()
+    if not make_active and previous is not None:
+        is_blank = getattr(previous, "IsBlank", None)
+        if not callable(is_blank):
+            raise RuntimeError(
+                "cannot preserve the active document: this Cinema 4D runtime "
+                "does not expose BaseDocument.IsBlank()"
+            )
+        if is_blank():
+            raise RuntimeError(
+                "cannot insert a document without destroying the blank active document; "
+                "make the current scene non-empty or pass make_active=true"
+            )
+
+    documents.InsertBaseDocument(doc)
+    if make_active:
+        documents.SetActiveDocument(doc)
+    elif previous is not None:
+        documents.SetActiveDocument(previous)
+        if documents.GetActiveDocument() != previous:
+            raise RuntimeError("Cinema 4D did not restore the previous active document")
+
+    return documents.GetActiveDocument() == doc
+
+
 def handle_save_document(params: dict[str, Any]) -> dict[str, Any]:
     """Save the active document to disk.
 
@@ -83,9 +115,7 @@ def handle_open_document(params: dict[str, Any]) -> dict[str, Any]:
     if new_doc is None:
         raise RuntimeError(f"LoadDocument returned None for {path!r}")
 
-    documents.InsertBaseDocument(new_doc)
-    if make_active:
-        documents.SetActiveDocument(new_doc)
+    _insert_document(new_doc, make_active)
     c4d.EventAdd()
 
     return {
@@ -108,14 +138,12 @@ def handle_new_document(params: dict[str, Any]) -> dict[str, Any]:
     new_doc = c4d.documents.BaseDocument()
     if isinstance(name, str) and name:
         new_doc.SetDocumentName(name)
-    documents.InsertBaseDocument(new_doc)
-    if make_active:
-        documents.SetActiveDocument(new_doc)
+    switched = _insert_document(new_doc, make_active)
     c4d.EventAdd()
 
     active = documents.GetActiveDocument()
     return {
-        "switched": make_active,
+        "switched": switched,
         "active_document": active.GetDocumentName() if active else "",
     }
 

@@ -16,7 +16,7 @@ Only the exact foundation behaviors below are claimed as live-verified. No compl
 ## Evidence labels
 
 - **Inherited / unverified:** implementation or documentation carried from the existing `mcp-cinema4d` codebase, or a tool not exercised by the strict foundation suite. Presence in [TOOLS.md](./TOOLS.md) only means the tool is registered in source.
-- **Foundation live-verified:** the exact behavior was exercised by `npm run test:live:2025`, the command exited `0`, the bridge reported a Cinema 4D 2025 runtime, and the foundation test had no skip.
+- **Foundation live-verified:** the exact behavior was exercised by `npm run test:live:2025`, the command exited `0`, the bridge and security snapshot matched the recorded runtime below, and the foundation test had no skip.
 - **Unsupported / unverified:** no accepted live evidence exists. This label does not predict whether a tool happens to work.
 
 ## Foundation verification boundary
@@ -26,7 +26,7 @@ The strict suite currently covers one end-to-end path:
 | Area                           | Tools/behavior exercised                                                       | Status                   |
 | ------------------------------ | ------------------------------------------------------------------------------ | ------------------------ |
 | Connection                     | `ping` through the Codex-style STDIO server and TCP bridge                     | Foundation live-verified |
-| Runtime and security discovery | `get_capabilities`; requires a reported Cinema 4D 2025 release                 | Foundation live-verified |
+| Runtime and security discovery | `get_capabilities`; exact runtime, platform, bridge, and security gates        | Foundation live-verified |
 | Isolated document              | `new_document` with a unique name and `make_active: false`                     | Foundation live-verified |
 | Create, edit, read             | `batch`, `create_entity`, `sample_transform`, `set_transform`                  | Foundation live-verified |
 | Undo                           | `undo`, followed by a transform read that must match the pre-edit value        | Foundation live-verified |
@@ -34,7 +34,7 @@ The strict suite currently covers one end-to-end path:
 | Save-copy and state            | `get_document_state`, `save_document` with `copy: true`, then state comparison | Foundation live-verified |
 | Cleanup                        | Close the uniquely named temporary document and remove temporary files         | Foundation live-verified |
 
-Recorded run: Windows x64, Cinema 4D raw version `2025302` (2025.3.2), Node.js 24.18.0, bridge 0.3.1, loopback transport, token authentication disabled, and `exec_python` disabled. `npm run test:live:2025` exited `0` with one passing foundation test and zero skipped tests on 2026-08-08.
+Recorded run: Windows x64, Cinema 4D raw version `2025302` (2025.3.2), Node.js 24.18.0, bridge 0.4.0, loopback transport, token authentication disabled, and `exec_python` disabled. `npm run test:live:2025` exited `0` with one passing foundation test and zero skipped tests on 2026-08-08.
 
 Even after this suite passes, the claim is limited to the exact Cinema 4D build, operating system, bridge version, security posture, and foundation path tested. It does **not** promote all 65 tools or any complete tool group.
 

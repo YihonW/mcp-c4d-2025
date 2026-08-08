@@ -42,12 +42,27 @@ type BridgeProbeDecision = {
 
 type BridgeCapabilities = {
   c4d_version: number;
+  display_version: string;
+  compatibility: string;
+  platform: string;
+  bridge_version: string;
+  security: {
+    loopback: boolean;
+    token_required: boolean;
+    exec_python: boolean;
+  };
+};
+
+type LiveSecurityExpectation = {
+  tokenRequired: boolean;
+  execPython: boolean;
 };
 
 /** Fail-fast policy used by the non-skippable Cinema 4D 2025 smoke command. */
 export function requireLiveBridge(
   probe: BridgeProbeDecision,
   capabilities?: BridgeCapabilities,
+  expectedSecurity: LiveSecurityExpectation = { tokenRequired: false, execPython: false },
 ): void {
   if (!probe.ready) {
     const detail = probe.reason ? `: ${probe.reason}` : "";
@@ -61,6 +76,42 @@ export function requireLiveBridge(
       : undefined;
   if (release !== 2025) {
     throw new Error(`Cinema 4D 2025 required; bridge reports release ${release ?? "unknown"}`);
+  }
+  if (rawVersion !== 2025302) {
+    throw new Error(`Cinema 4D 2025.3.2 required; bridge reports raw version ${rawVersion}`);
+  }
+  if (capabilities?.display_version !== "2025.3.2") {
+    throw new Error(
+      `display_version must be 2025.3.2; bridge reports ${capabilities?.display_version ?? "missing"}`,
+    );
+  }
+  if (capabilities.compatibility !== "supported") {
+    throw new Error(
+      `compatibility must be supported; bridge reports ${capabilities.compatibility ?? "missing"}`,
+    );
+  }
+  if (capabilities.platform !== "win32") {
+    throw new Error(
+      `Windows platform win32 required; bridge reports ${capabilities.platform ?? "missing"}`,
+    );
+  }
+  if (capabilities.bridge_version !== "0.4.0") {
+    throw new Error(
+      `bridge 0.4.0 required; bridge reports ${capabilities.bridge_version ?? "missing"}`,
+    );
+  }
+  if (capabilities.security?.loopback !== true) {
+    throw new Error("security.loopback must be true for the foundation live gate");
+  }
+  if (capabilities.security.token_required !== expectedSecurity.tokenRequired) {
+    throw new Error(
+      `security.token_required must be ${expectedSecurity.tokenRequired}; bridge reports ${capabilities.security.token_required}`,
+    );
+  }
+  if (capabilities.security.exec_python !== expectedSecurity.execPython) {
+    throw new Error(
+      `security.exec_python must be ${expectedSecurity.execPython}; bridge reports ${capabilities.security.exec_python}`,
+    );
   }
 }
 

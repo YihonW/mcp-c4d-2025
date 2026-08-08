@@ -12,7 +12,9 @@ export const newDocumentTool = defineTool({
     make_active: z
       .boolean()
       .optional()
-      .describe("Switch the active document to the new one. Default true."),
+      .describe(
+        "Switch the active document to the new one. Default true. False is refused when the current document is blank because Cinema 4D would destroy it during insertion.",
+      ),
   },
   async handler(args, client) {
     return textResult(await client.request("new_document", args, 10_000));
