@@ -96,6 +96,17 @@ class RedshiftCapabilitiesTest(unittest.TestCase):
         self.assertFalse(result["aov_api"]["supported"])
         self.assertTrue(result["materials"]["supported"])
 
+    def test_non_redshift_node_templates_do_not_report_node_space_support(self):
+        self.maxon, self.repository = make_maxon_runtime(("net.maxon.nodes.standard.output",))
+        sys.modules["maxon"] = self.maxon
+        capabilities = self._load_capabilities()
+
+        result = capabilities.handle_rs_get_capabilities({})
+
+        self.assertFalse(result["node_space"]["supported"])
+        self.assertIn("Redshift", result["node_space"]["reason"])
+        self.assertEqual(result["node_space"]["node_template_count"], 1)
+
     def test_resolve_document_rejects_zero_and_duplicate_names_before_activation(self):
         helpers = self._load_helpers()
 

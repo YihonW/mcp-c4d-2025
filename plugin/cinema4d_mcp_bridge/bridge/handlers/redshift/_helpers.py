@@ -154,14 +154,17 @@ def probe_redshift() -> dict[str, object]:
     module = _feature(redshift is not None, module_reason)
 
     node_assets, node_reason = _node_assets()
-    node_space_supported = node_reason is None and bool(node_assets)
+    asset_ids = {_asset_id(asset) for asset in node_assets}
+    redshift_asset_ids = {
+        asset_id for asset_id in asset_ids if asset_id.startswith("com.redshift3d.redshift4c4d.")
+    }
+    node_space_supported = node_reason is None and bool(redshift_asset_ids)
     node_space = _feature(
         node_space_supported,
-        node_reason or "no Redshift node templates found",
+        node_reason or "no Redshift node templates found in the repository",
         id=RS_NODE_SPACE_ID,
         node_template_count=len(node_assets),
     )
-    asset_ids = {_asset_id(asset) for asset in node_assets}
     missing_assets = [asset for asset in _REQUIRED_MATERIAL_ASSETS if asset not in asset_ids]
     materials = _feature(
         not missing_assets and node_space_supported,
