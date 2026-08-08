@@ -55,6 +55,7 @@ import { resetSceneTool } from "./reset-scene.js";
 import { rsGetCapabilitiesTool } from "./rs-get-capabilities.js";
 import { rsCreateMaterialTool } from "./rs-create-material.js";
 import { rsClearAovsTool } from "./rs-clear-aovs.js";
+import { rsConfigureRenderTool } from "./rs-configure-render.js";
 import { rsCreateLightTool } from "./rs-create-light.js";
 import { rsSetCameraTool } from "./rs-set-camera.js";
 import { rsSetMaterialPbrTool } from "./rs-set-material-pbr.js";
@@ -183,6 +184,7 @@ export const ALL_TOOLS: AnyTool[] = [
   rsUpsertAovTool,
   rsRemoveAovTool,
   rsClearAovsTool,
+  rsConfigureRenderTool,
 ];
 
 /**

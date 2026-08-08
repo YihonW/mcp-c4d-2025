@@ -6,6 +6,10 @@ import { ALL_TOOLS } from "../../src/tools/index.js";
 import { rsCreateMaterialTool } from "../../src/tools/rs-create-material.js";
 import { rsCreateLightTool } from "../../src/tools/rs-create-light.js";
 import { rsClearAovsInput, rsClearAovsTool } from "../../src/tools/rs-clear-aovs.js";
+import {
+  rsConfigureRenderInput,
+  rsConfigureRenderTool,
+} from "../../src/tools/rs-configure-render.js";
 import { rsGetCapabilitiesTool } from "../../src/tools/rs-get-capabilities.js";
 import { rsSetCameraTool } from "../../src/tools/rs-set-camera.js";
 import { rsListAovsTool } from "../../src/tools/rs-list-aovs.js";
@@ -289,6 +293,43 @@ describe("Redshift AOV tools", () => {
     expect(rsClearAovsTool.group).toBe("redshift");
     expect(client.requests).toEqual([
       { command: "rs_clear_aovs", params: args, timeoutMs: 30_000 },
+    ]);
+  });
+});
+
+describe("rs_configure_render", () => {
+  test("validates render settings", () => {
+    expect(rsConfigureRenderInput.safeParse({ name: "Final", width: 64, height: 64 }).success).toBe(
+      true,
+    );
+    expect(rsConfigureRenderInput.safeParse({ name: " ", width: 64 }).success).toBe(false);
+    expect(rsConfigureRenderInput.safeParse({ name: "Final", width: 0 }).success).toBe(false);
+    expect(rsConfigureRenderInput.safeParse({ name: "Final", frame: 1.5 }).success).toBe(false);
+    expect(rsConfigureRenderInput.safeParse({ name: "Final", output_format: "bmp" }).success).toBe(
+      false,
+    );
+    expect(rsConfigureRenderInput.safeParse({ name: "Final", beauty_path: " " }).success).toBe(
+      false,
+    );
+  });
+
+  test("is registered and forwards the exact request", async () => {
+    const client = new FakeC4DClient();
+    const args = {
+      document_name: "scene",
+      name: "Final",
+      width: 64,
+      height: 64,
+      output_format: "exr" as const,
+      make_active: false,
+    };
+
+    await rsConfigureRenderTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsConfigureRenderTool);
+    expect(rsConfigureRenderTool.group).toBe("redshift");
+    expect(client.requests).toEqual([
+      { command: "rs_configure_render", params: args, timeoutMs: 30_000 },
     ]);
   });
 });
