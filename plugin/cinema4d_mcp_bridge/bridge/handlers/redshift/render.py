@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import os
+import time
 from typing import Any
 
 import c4d
@@ -15,6 +17,7 @@ from ._helpers import (
     require_output_path,
     require_redshift,
 )
+from .aovs import _aov_record
 
 _FORMAT_SYMBOLS = {
     "png": "FILTER_PNG",
@@ -232,4 +235,175 @@ def handle_rs_configure_render(params: dict[str, Any]) -> dict[str, Any]:
             "renderer_id": RS_RENDERER_ID,
             "video_post_id": RS_RENDERER_ID,
             "rollback": "not_needed",
+        }
+
+
+def _normalize_render_input(params: dict[str, Any]) -> dict[str, Any]:
+    document_name = params.get("document_name")
+    if not isinstance(document_name, str) or not document_name.strip():
+        raise ValueError("document_name is required for a formal Redshift render")
+    render_data_name = params.get("render_data_name")
+    if not isinstance(render_data_name, str) or not render_data_name.strip():
+        raise ValueError("render_data_name must be a non-empty string")
+    if params.get("force") is not True:
+        raise ValueError("force must be true for a formal Redshift render")
+    overwrite = params.get("overwrite", False)
+    if not isinstance(overwrite, bool):
+        raise ValueError("overwrite must be a boolean")
+    return {
+        "document_name": document_name,
+        "render_data_name": render_data_name.strip(),
+        "output_path": params.get("output_path"),
+        "overwrite": overwrite,
+    }
+
+
+def _find_redshift_video_post(render_data):
+    current = render_data.GetFirstVideoPost()
+    matches = []
+    while current is not None:
+        if int(current.GetType()) == RS_RENDERER_ID:
+            matches.append(current)
+        current = current.GetNext()
+    if not matches:
+        raise ValueError("Redshift video post not found on RenderData")
+    if len(matches) != 1:
+        raise ValueError("Redshift video post must be unique on RenderData")
+    return matches[0]
+
+
+def _allocate_bitmap(width: int, height: int):
+    bitmaps = getattr(c4d, "bitmaps", None)
+    constructor = getattr(bitmaps, "MultipassBitmap", None)
+    if not callable(constructor):
+        raise RuntimeError("Cinema 4D MultipassBitmap API is unavailable")
+    bitmap = constructor(width, height, _symbol("COLORMODE_RGB"))
+    if bitmap is None:
+        raise RuntimeError("failed to allocate render bitmap")
+    add_channel = getattr(bitmap, "AddChannel", None)
+    if not callable(add_channel):
+        raise RuntimeError("render bitmap channel API is unavailable")
+    add_channel(True, True)
+    return bitmap
+
+
+def _expected_aov_outputs(redshift, video_post, *, overwrite: bool) -> list[dict[str, Any]]:
+    records = [
+        _aov_record(aov, index)
+        for index, aov in enumerate(list(redshift.RendererGetAOVs(video_post)))
+    ]
+    expected = []
+    for record in records:
+        if not record["enabled"] or not record["direct_file_enabled"]:
+            continue
+        path = record["direct_file_path"]
+        if not path:
+            raise ValueError(f"enabled direct AOV {record['name']!r} requires an output path")
+        record["direct_file_path"] = require_output_path(path, overwrite=overwrite)
+        expected.append(record)
+    return expected
+
+
+def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
+    """Run one guarded synchronous Redshift render and report real output files."""
+    values = _normalize_render_input(params)
+    require_redshift("render", "aov_api")
+    redshift, reason = load_redshift()
+    if redshift is None:
+        raise RuntimeError(reason or "redshift module unavailable")
+
+    with document_scope(values["document_name"], required=True) as document:
+        matches = _render_data_matches(document, values["render_data_name"])
+        if not matches:
+            raise ValueError(f"render_data not found: {values['render_data_name']!r}")
+        if len(matches) != 1:
+            raise ValueError(f"render_data name must be unique: {values['render_data_name']!r}")
+        render_data = matches[0]
+        output_path = require_output_path(values["output_path"], overwrite=values["overwrite"])
+
+        if int(render_data[_symbol("RDATA_RENDERENGINE")]) != RS_RENDERER_ID:
+            raise ValueError(f"RenderData renderer must be Redshift ({RS_RENDERER_ID})")
+        video_post = _find_redshift_video_post(render_data)
+        expected_aovs = _expected_aov_outputs(redshift, video_post, overwrite=values["overwrite"])
+
+        width = int(render_data[_symbol("RDATA_XRES")])
+        height = int(render_data[_symbol("RDATA_YRES")])
+        if width <= 0 or height <= 0:
+            raise ValueError("RenderData width and height must be positive")
+        output_format = render_data[_symbol("RDATA_FORMAT")]
+        if not isinstance(output_format, int) or isinstance(output_format, bool):
+            raise ValueError("RenderData output format must be an installed filter id")
+
+        clone = _clone_render_data(render_data)
+        if clone is None:
+            raise RuntimeError("failed to clone RenderData for formal render")
+        clone[_symbol("RDATA_PATH")] = output_path
+        get_settings = getattr(clone, "GetDataInstance", None)
+        if not callable(get_settings):
+            raise RuntimeError("RenderData clone settings are unavailable")
+        bitmap = _allocate_bitmap(width, height)
+
+        render_document = getattr(documents, "RenderDocument", None)
+        if not callable(render_document):
+            raise RuntimeError("Cinema 4D RenderDocument API is unavailable")
+        started = time.perf_counter()
+        render_result = render_document(
+            document,
+            get_settings(),
+            bitmap,
+            _symbol("RENDERFLAGS_EXTERNAL"),
+        )
+        duration_ms = max(0, round((time.perf_counter() - started) * 1000))
+        if render_result != _symbol("RENDERRESULT_OK"):
+            raise RuntimeError(f"Redshift render failed with code {render_result}")
+
+        save = getattr(bitmap, "Save", None)
+        if not callable(save):
+            raise RuntimeError("render bitmap save API is unavailable")
+        save_result = save(output_path, output_format)
+        if save_result != _symbol("IMAGERESULT_OK"):
+            raise RuntimeError(f"failed to save Redshift Beauty output (code {save_result})")
+        beauty_size = os.stat(output_path).st_size
+        if beauty_size <= 0:
+            raise RuntimeError("Redshift Beauty output is empty")
+
+        rendered_aovs = []
+        expected_missing = []
+        for record in expected_aovs:
+            path = record["direct_file_path"]
+            try:
+                size = os.stat(path).st_size
+            except OSError as exc:
+                expected_missing.append({"name": record["name"], "path": path, "reason": str(exc)})
+                continue
+            if size <= 0:
+                expected_missing.append(
+                    {"name": record["name"], "path": path, "reason": "output file is empty"}
+                )
+                continue
+            rendered_aovs.append(
+                {
+                    "index": record["index"],
+                    "name": record["name"],
+                    "type": record["type"],
+                    "path": path,
+                    "size": size,
+                }
+            )
+
+        warnings = [
+            f"expected AOV output missing: {item['name']} at {item['path']}"
+            for item in expected_missing
+        ]
+        return {
+            "document_name": document.GetDocumentName(),
+            "render_data": {"kind": "render_data", "name": render_data.GetName()},
+            "renderer": {"id": RS_RENDERER_ID, "name": "Redshift"},
+            "width": width,
+            "height": height,
+            "beauty": {"path": output_path, "size": beauty_size},
+            "aovs": rendered_aovs,
+            "expected_missing": expected_missing,
+            "duration_ms": duration_ms,
+            "warnings": warnings,
         }

@@ -29,9 +29,17 @@ class FakeBaseTime:
 
 
 class FakeVideoPost:
-    def __init__(self, values=None, fail_parameter=None):
+    def __init__(self, values=None, fail_parameter=None, type_id=RS_RENDERER_ID):
         self.values = dict(values or {})
         self.fail_parameter = fail_parameter
+        self.type_id = type_id
+        self.next = None
+
+    def GetType(self):
+        return self.type_id
+
+    def GetNext(self):
+        return self.next
 
     def SetParameter(self, parameter, value):
         if parameter == self.fail_parameter:
@@ -40,7 +48,51 @@ class FakeVideoPost:
         return True
 
     def GetClone(self):
-        return FakeVideoPost(self.values)
+        return FakeVideoPost(self.values, type_id=self.type_id)
+
+
+class FakeContainer:
+    def __init__(self, values):
+        self.values = values
+
+    def GetCount(self):
+        return len(self.values)
+
+    def GetIndexId(self, index):
+        return list(self.values)[index]
+
+    def GetIndexData(self, index):
+        return self.values[list(self.values)[index]]
+
+
+class FakeAov:
+    def __init__(self, values):
+        self.values = dict(values)
+
+    def GetParameter(self, parameter):
+        return self.values.get(parameter)
+
+    def GetDataInstance(self):
+        return FakeContainer(self.values)
+
+
+class FakeBitmap:
+    def __init__(self, owner, width, height, color_mode):
+        self.owner = owner
+        self.width = width
+        self.height = height
+        self.color_mode = color_mode
+        self.channels = []
+
+    def AddChannel(self, alpha, straight):
+        self.channels.append((alpha, straight))
+
+    def Save(self, path, output_format):
+        self.owner.save_calls.append((path, output_format))
+        if self.owner.save_result != self.owner.c4d.IMAGERESULT_OK:
+            return self.owner.save_result
+        Path(path).write_bytes(b"beauty-output")
+        return self.owner.save_result
 
 
 class FakeRenderData:
@@ -76,6 +128,12 @@ class FakeRenderData:
         copied.values = dict(self.values)
         copied.video_post = self.video_post.GetClone() if self.video_post is not None else None
         return copied
+
+    def GetDataInstance(self):
+        return self.values
+
+    def GetFirstVideoPost(self):
+        return self.video_post
 
     def CopyTo(self, target, _flags, _trans=None):
         target.name = self.name
@@ -152,6 +210,13 @@ class RedshiftRenderTest(unittest.TestCase):
         self.redshift = make_redshift_runtime()
         self.find_video_post_calls = []
         self.return_none_video_post = False
+        self.aovs = []
+        self.render_calls = []
+        self.render_result = self.c4d.RENDERRESULT_OK
+        self.allocate_bitmap = True
+        self.save_calls = []
+        self.save_result = self.c4d.IMAGERESULT_OK
+        self.write_aov_outputs = True
 
         def find_video_post(render_data, renderer):
             self.find_video_post_calls.append((render_data, renderer))
@@ -162,6 +227,24 @@ class RedshiftRenderTest(unittest.TestCase):
             return render_data.video_post
 
         self.redshift.FindAddVideoPost = find_video_post
+        self.redshift.RendererGetAOVs = lambda _video_post: list(self.aovs)
+        self.c4d.bitmaps = types.SimpleNamespace(
+            MultipassBitmap=lambda width, height, color_mode: (
+                FakeBitmap(self, width, height, color_mode) if self.allocate_bitmap else None
+            )
+        )
+
+        def render_document(document, settings, bitmap, flags):
+            self.render_calls.append((document, settings, bitmap, flags))
+            if self.render_result == self.c4d.RENDERRESULT_OK and self.write_aov_outputs:
+                for aov in self.aovs:
+                    if aov.GetParameter(self.c4d.REDSHIFT_AOV_FILE_ENABLED):
+                        path = aov.GetParameter(self.c4d.REDSHIFT_AOV_FILE_PATH)
+                        if path:
+                            Path(path).write_bytes(b"aov-output")
+            return self.render_result
+
+        self.documents.RenderDocument = render_document
         bridge = types.ModuleType("bridge")
         bridge.__path__ = [str(PLUGIN_ROOT / "bridge")]
         handlers = types.ModuleType("bridge.handlers")
@@ -208,6 +291,19 @@ class RedshiftRenderTest(unittest.TestCase):
             "RDATA_RENDERENGINE": 5300,
             "RDATA_XRES": 5008,
             "RDATA_YRES": 5009,
+            "COLORMODE_RGB": 4,
+            "IMAGERESULT_OK": 0,
+            "RDATA_SAVEIMAGE": 5040,
+            "RENDERFLAGS_EXTERNAL": 1,
+            "RENDERRESULT_FAILED": 11,
+            "RENDERRESULT_OK": 0,
+            "REDSHIFT_AOV_TYPE": 1000,
+            "REDSHIFT_AOV_NAME": 1001,
+            "REDSHIFT_AOV_ENABLED": 1002,
+            "REDSHIFT_AOV_MULTIPASS_ENABLED": 1003,
+            "REDSHIFT_AOV_FILE_ENABLED": 1004,
+            "REDSHIFT_AOV_FILE_PATH": 1005,
+            "REDSHIFT_AOV_TYPE_BEAUTY": 10,
         }
         for name, value in values.items():
             setattr(self.c4d, name, value)
@@ -235,6 +331,30 @@ class RedshiftRenderTest(unittest.TestCase):
 
     def _load(self):
         return importlib.import_module("bridge.handlers.redshift.render")
+
+    def _configured_render_data(self, name="Final", document=None):
+        document = document or self.document
+        render_data = self._render_data(name)
+        render_data[self.c4d.RDATA_RENDERENGINE] = RS_RENDERER_ID
+        render_data[self.c4d.RDATA_XRES] = 64.0
+        render_data[self.c4d.RDATA_YRES] = 32.0
+        render_data[self.c4d.RDATA_FORMAT] = self.c4d.FILTER_PNG
+        render_data[self.c4d.RDATA_PATH] = "unchanged-source-path"
+        render_data.video_post = FakeVideoPost()
+        document.InsertRenderData(render_data)
+        return render_data
+
+    def _aov(self, path):
+        return FakeAov(
+            {
+                self.c4d.REDSHIFT_AOV_TYPE: 10,
+                self.c4d.REDSHIFT_AOV_NAME: "Beauty AOV",
+                self.c4d.REDSHIFT_AOV_ENABLED: True,
+                self.c4d.REDSHIFT_AOV_MULTIPASS_ENABLED: True,
+                self.c4d.REDSHIFT_AOV_FILE_ENABLED: True,
+                self.c4d.REDSHIFT_AOV_FILE_PATH: path,
+            }
+        )
 
     def test_create_configures_exact_redshift_fields_without_implicit_activation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -365,6 +485,201 @@ class RedshiftRenderTest(unittest.TestCase):
 
         self.assertEqual([item.GetName() for item in self.document.render_data], ["User"])
         self.assertIs(self.document.active_render_data, self.user_render_data)
+
+    def test_render_returns_beauty_and_aov_manifest_without_mutating_source_settings(self):
+        source = self._configured_render_data()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "beauty.png")
+            aov_path = os.path.join(temp_dir, "aov.png")
+            self.aovs = [self._aov(aov_path)]
+            render = self._load()
+
+            result = render.handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": output_path,
+                    "force": True,
+                }
+            )
+
+            self.assertGreater(result["beauty"]["size"], 0)
+            self.assertEqual(result["beauty"]["path"], output_path)
+            self.assertEqual(result["aovs"][0]["path"], aov_path)
+            self.assertGreater(result["aovs"][0]["size"], 0)
+            self.assertEqual(result["expected_missing"], [])
+        self.assertEqual(result["renderer"], {"id": RS_RENDERER_ID, "name": "Redshift"})
+        self.assertEqual((result["width"], result["height"]), (64, 32))
+        self.assertGreaterEqual(result["duration_ms"], 0)
+        self.assertEqual(source[self.c4d.RDATA_PATH], "unchanged-source-path")
+        self.assertIs(self.document.active_render_data, self.user_render_data)
+
+    def test_render_guards_required_confirmation_and_output_paths_before_render(self):
+        self._configured_render_data()
+        render = self._load()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "beauty.png")
+            Path(output_path).write_bytes(b"existing")
+            cases = [
+                (
+                    {"render_data_name": "Final", "output_path": output_path, "force": True},
+                    "document_name",
+                ),
+                (
+                    {
+                        "document_name": "main",
+                        "render_data_name": "Final",
+                        "output_path": output_path,
+                        "force": False,
+                    },
+                    "force",
+                ),
+                (
+                    {
+                        "document_name": "main",
+                        "render_data_name": "Final",
+                        "output_path": "relative.png",
+                        "force": True,
+                    },
+                    "absolute",
+                ),
+                (
+                    {
+                        "document_name": "main",
+                        "render_data_name": "Final",
+                        "output_path": output_path,
+                        "force": True,
+                    },
+                    "already exists",
+                ),
+            ]
+            for params, message in cases:
+                with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                    render.handle_rs_render(params)
+
+        self.assertEqual(self.render_calls, [])
+
+    def test_render_rejects_render_data_renderer_and_video_post_preflight(self):
+        render = self._load()
+        with tempfile.TemporaryDirectory() as temp_dir:
+
+            def request(name):
+                return {
+                    "document_name": "main",
+                    "render_data_name": name,
+                    "output_path": os.path.join(temp_dir, f"{name}.png"),
+                    "force": True,
+                }
+
+            with self.assertRaisesRegex(ValueError, "not found"):
+                render.handle_rs_render(request("Missing"))
+            wrong = self._configured_render_data("Wrong")
+            wrong[self.c4d.RDATA_RENDERENGINE] = 0
+            with self.assertRaisesRegex(ValueError, "renderer"):
+                render.handle_rs_render(request("Wrong"))
+            no_post = self._configured_render_data("No Post")
+            no_post.video_post = None
+            with self.assertRaisesRegex(ValueError, "video post"):
+                render.handle_rs_render(request("No Post"))
+            self._configured_render_data("Dup")
+            self._configured_render_data("Dup")
+            with self.assertRaisesRegex(ValueError, "unique"):
+                render.handle_rs_render(request("Dup"))
+
+        self.assertEqual(self.render_calls, [])
+
+    def test_render_validates_every_enabled_direct_aov_output_before_render(self):
+        self._configured_render_data()
+        render = self._load()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aov_path = os.path.join(temp_dir, "existing-aov.png")
+            Path(aov_path).write_bytes(b"existing")
+            invalid_paths = ["relative-aov.png", "", aov_path]
+            for index, aov_path_value in enumerate(invalid_paths):
+                self.aovs = [self._aov(aov_path_value)]
+                with self.subTest(path=aov_path_value), self.assertRaises(ValueError):
+                    render.handle_rs_render(
+                        {
+                            "document_name": "main",
+                            "render_data_name": "Final",
+                            "output_path": os.path.join(temp_dir, f"beauty-{index}.png"),
+                            "force": True,
+                        }
+                    )
+
+        self.assertEqual(self.render_calls, [])
+
+    def test_render_rejects_bitmap_allocation_before_render(self):
+        self._configured_render_data()
+        self.allocate_bitmap = False
+        render = self._load()
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            self.assertRaisesRegex(RuntimeError, "bitmap"),
+        ):
+            render.handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": os.path.join(temp_dir, "beauty.png"),
+                    "force": True,
+                }
+            )
+        self.assertEqual(self.render_calls, [])
+
+    def test_render_failure_restores_active_document_and_does_not_create_beauty(self):
+        target_document = FakeRenderDocument("target")
+        self.document.next = target_document
+        self.document_state.items = [self.document, target_document]
+        self._configured_render_data(document=target_document)
+        self.render_result = self.c4d.RENDERRESULT_FAILED
+        render = self._load()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "beauty.png")
+            with self.assertRaisesRegex(RuntimeError, "render failed"):
+                render.handle_rs_render(
+                    {
+                        "document_name": "target",
+                        "render_data_name": "Final",
+                        "output_path": output_path,
+                        "force": True,
+                    }
+                )
+            self.assertFalse(os.path.exists(output_path))
+        self.assertIs(self.document_state.active, self.document)
+
+    def test_render_save_failure_and_missing_expected_aov_are_reported_truthfully(self):
+        self._configured_render_data()
+        render = self._load()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "beauty.png")
+            self.save_result = 7
+            with self.assertRaisesRegex(RuntimeError, "save"):
+                render.handle_rs_render(
+                    {
+                        "document_name": "main",
+                        "render_data_name": "Final",
+                        "output_path": output_path,
+                        "force": True,
+                    }
+                )
+            self.assertFalse(os.path.exists(output_path))
+
+            self.save_result = self.c4d.IMAGERESULT_OK
+            aov_path = os.path.join(temp_dir, "missing-aov.png")
+            self.aovs = [self._aov(aov_path)]
+            self.write_aov_outputs = False
+            result = render.handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": output_path,
+                    "force": True,
+                }
+            )
+            self.assertEqual(result["aovs"], [])
+            self.assertEqual(result["expected_missing"][0]["path"], aov_path)
+            self.assertTrue(result["warnings"])
 
 
 if __name__ == "__main__":

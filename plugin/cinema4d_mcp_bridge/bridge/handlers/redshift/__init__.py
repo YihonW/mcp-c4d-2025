@@ -10,7 +10,7 @@ from .camera import handle_rs_set_camera
 from .capabilities import handle_rs_get_capabilities
 from .lights import handle_rs_create_light
 from .materials import handle_rs_create_material, handle_rs_set_material_pbr
-from .render import handle_rs_configure_render
+from .render import handle_rs_configure_render, handle_rs_render
 
 REDSHIFT_HANDLERS = {
     "rs_get_capabilities": handle_rs_get_capabilities,
@@ -23,6 +23,7 @@ REDSHIFT_HANDLERS = {
     "rs_remove_aov": handle_rs_remove_aov,
     "rs_clear_aovs": handle_rs_clear_aovs,
     "rs_configure_render": handle_rs_configure_render,
+    "rs_render": handle_rs_render,
 }
 
 __all__ = ["REDSHIFT_HANDLERS"]

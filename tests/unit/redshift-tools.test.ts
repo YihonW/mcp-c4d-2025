@@ -14,6 +14,7 @@ import { rsGetCapabilitiesTool } from "../../src/tools/rs-get-capabilities.js";
 import { rsSetCameraTool } from "../../src/tools/rs-set-camera.js";
 import { rsListAovsTool } from "../../src/tools/rs-list-aovs.js";
 import { rsRemoveAovInput, rsRemoveAovTool } from "../../src/tools/rs-remove-aov.js";
+import { rsRenderInput, rsRenderTool } from "../../src/tools/rs-render.js";
 import {
   rsSetMaterialPbrInput,
   rsSetMaterialPbrTool,
@@ -331,5 +332,38 @@ describe("rs_configure_render", () => {
     expect(client.requests).toEqual([
       { command: "rs_configure_render", params: args, timeoutMs: 30_000 },
     ]);
+  });
+});
+
+describe("rs_render", () => {
+  test("requires exact document, force, and output guards", () => {
+    const valid = {
+      document_name: "scene",
+      render_data_name: "Final",
+      output_path: "C:/renders/beauty.exr",
+      force: true,
+    };
+    expect(rsRenderInput.safeParse(valid).success).toBe(true);
+    expect(rsRenderInput.safeParse({ ...valid, document_name: " " }).success).toBe(false);
+    expect(rsRenderInput.safeParse({ ...valid, render_data_name: " " }).success).toBe(false);
+    expect(rsRenderInput.safeParse({ ...valid, output_path: " " }).success).toBe(false);
+    expect(rsRenderInput.safeParse({ ...valid, force: false }).success).toBe(false);
+  });
+
+  test("is registered and uses the synchronous render timeout", async () => {
+    const client = new FakeC4DClient();
+    const args = {
+      document_name: "scene",
+      render_data_name: "Final",
+      output_path: "C:/renders/beauty.exr",
+      force: true as const,
+      overwrite: false,
+    };
+
+    await rsRenderTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsRenderTool);
+    expect(rsRenderTool.group).toBe("redshift");
+    expect(client.requests).toEqual([{ command: "rs_render", params: args, timeoutMs: 1_800_000 }]);
   });
 });
