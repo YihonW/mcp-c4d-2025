@@ -59,19 +59,19 @@ Expected: `list_entities(kind="object")` returns exactly those new scene objects
 
 - [ ] **Step 1: Add vertical motion keys**
 
-Set Y keys at frames 0/17/36/48/61/70/80/87/95/101/108/125 with values 220/12/115/12/63/12/35/12/21/12/12/12 cm. Use spline interpolation except the final stationary segment, which may be linear.
+Sample the accelerating initial fall on frames 0-16, then sample parabolic rebounds between contact frames 16/41/58/71/80/87/92/96. Use decreasing peak heights of approximately 112/58/31/16/8/4/2 cm above the resting center, linear interpolation, and a stationary hold through frame 125.
 
-Expected: `get_keyframes` returns declining apex heights and decreasing contact intervals.
+Expected: `get_keyframes` returns frame-sampled parabolic arcs, declining apex heights, and decreasing contact intervals without spline overshoot.
 
 - [ ] **Step 2: Add impact deformation keys**
 
-At each contact frame 17/48/70/87/101, add a short anticipation key, an impact scale near `[1.10,0.82,1.10]` with decreasing strength, and a recovery key two frames later at `[1,1,1]`.
+At each contact frame 16/41/58/71/80/87/92, add a short anticipation key, an impact scale near `[1.10,0.82,1.10]` with decreasing strength, and a recovery key two frames later at `[1,1,1]`. At an impact with Y scale `s`, set the center to `12*s` cm so the deformed ball remains in contact with the floor.
 
 Expected: every impact has one brief squash and the final scale is `[1,1,1]`.
 
 - [ ] **Step 3: Add subtle rotation**
 
-Animate one rotation component from 0 to roughly 2.4 radians by frame 108, then hold through frame 125.
+Animate one rotation component from 0 to roughly 2.4 radians by frame 96, then hold through frame 125.
 
 Expected: rotation stops when the ball settles.
 
@@ -90,16 +90,16 @@ Expected: rotation stops when the ball settles.
 
 Call `list_tracks` and `get_keyframes` for position, scale, and rotation.
 
-Expected: all planned tracks exist, and frames 108-125 remain stationary.
+Expected: all planned tracks exist, and frames 96-125 remain stationary.
 
 - [ ] **Step 2: Sample critical frames**
 
-Sample frames 0, 17, 36, 48, 70, 87, 101, and 125.
+Sample frames 0, 16, 28, 41, 58, 71, 92, 96, and 125.
 
-Expected: contact center Y is 12 cm, no sample penetrates the floor, and the final transform is stable.
+Expected: the deformed ball's world-space lower boundary is Y=0 at contact, no sample penetrates the floor, and the final transform is stable.
 
 - [ ] **Step 3: Render previews**
 
-Render previews at frames 17, 70, and 125 with the MCP preview renderer.
+Render previews at frames 16, 64, and 125 with the MCP preview renderer.
 
 Expected: the ball visibly contacts the floor, rebounds lower in the middle, and rests undeformed at the end.

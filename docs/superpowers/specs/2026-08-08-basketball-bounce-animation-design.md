@@ -15,9 +15,9 @@ Use the connected Cinema 4D MCP bridge to build a readable, realistic basketball
 ## Motion
 
 - The ball starts at Y=220 cm and first contacts the floor with its center at Y=12 cm.
-- Animate the center on Y with spline keys for a gravity-like accelerating fall and four progressively lower, shorter rebounds.
+- Animate the center on Y with frame-sampled parabolic motion for a gravity-like accelerating fall and progressively lower, shorter rebounds; linear interpolation prevents spline overshoot below the floor.
 - Keep X and Z fixed so the motion is easy to inspect.
-- Add brief Y squash and compensating X/Z widening at each impact, returning to uniform scale immediately afterward.
+- Add brief Y squash and compensating X/Z widening at each impact. Lower the center by the same amount so the deformed ball stays on the floor, then return to uniform scale immediately afterward.
 - Add a small accumulated rotation during the bounce without lateral drift.
 - End at Y=12 cm with scale `[1, 1, 1]` and no further keys after settling.
 
