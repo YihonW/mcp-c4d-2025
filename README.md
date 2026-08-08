@@ -1,11 +1,14 @@
-# mcp-cinema4d
+# mcp-c4d-2025
 
 [![CI](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml/badge.svg)](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
-[![Cinema 4D](https://img.shields.io/badge/Cinema%204D-%3E%3D2026.0.0-informational)](https://www.maxon.net/en/cinema-4d)
+[![Cinema 4D](https://img.shields.io/badge/Cinema%204D-2025.3.2%20target-yellow)](./docs/COMPATIBILITY.md)
 
-Let an LLM drive Cinema 4D. **mcp-cinema4d** bridges MCP-compatible clients (Claude Desktop, Claude Code, or any other stdio-capable MCP client) to a running Cinema 4D 2026 session so the model can inspect scene hierarchy, author shots, build node materials, and rig animation through a typed, undo-safe tool layer — not arbitrary Python pasted into a Script Manager.
+Let an LLM drive Cinema 4D. **mcp-c4d-2025** is a foundation fork of `mcp-cinema4d` that targets Cinema 4D 2025.3.2. It connects an MCP stdio client to the Python bridge running inside Cinema 4D so the model can inspect and edit a scene through typed tools.
+
+> [!IMPORTANT]
+> **Cinema 4D 2025.3.2 is the target, not a verified compatibility claim.** This checkout is not verified on 2025 until the strict `npm run test:live:2025` suite completes successfully without skips. The existing tool catalog is inherited and unverified on 2025 unless explicitly listed as live-verified in [Compatibility](./docs/COMPATIBILITY.md).
 
 **Good for:**
 
@@ -42,72 +45,28 @@ Two pieces to install: the **MCP server** (this npm package, runs as an MCP stdi
 
 ## Quickstart
 
-Assuming you already have Cinema 4D 2026.0.0+ and Node.js 24+.
+Prerequisites: Windows, Node.js 24+, and a local Cinema 4D 2025 preference directory. From an absolute local checkout:
 
-1. **Install the bridge plugin into Cinema 4D (one-off).** Download the latest
-   `cinema4d_mcp_bridge-<version>.zip` from the
-   [Releases page](https://github.com/kumoproductions/mcp-cinema4d/releases/latest)
-   and extract the `cinema4d_mcp_bridge/` folder into your Cinema 4D plugins
-   directory (see [Installing the bridge plugin](#installing-the-bridge-plugin)
-   for platform-specific paths).
-2. **Launch (or restart) Cinema 4D.** The C4D console should print
-   `[cinema4d_mcp_bridge] listening on 127.0.0.1:18710`.
-3. **Smoke-test the MCP server from the CLI:**
+```powershell
+Set-Location "D:\ABSOLUTE\PATH\TO\mcp_c4d"
+npm ci
+npm run build
+npm run install:c4d -- --dry-run
+```
 
-   ```bash
-   echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","arguments":{}}}' \
-     | npx -y @kumoproductions/mcp-cinema4d
-   #   → {"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"pong\": true, ...}"}]}}
-   ```
-
-Then wire it into your MCP client (see [Client configuration](#client-configuration)) and try:
-
-> _"List every object in the scene, then add a cube named `hero` 200 units above the origin."_
-
-The LLM will call `list_entities` → `create_entity` in sequence; you should see a new cube appear in the viewport.
-
-Prefer running from a local checkout? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the source-install flow.
+Review the printed source and destination before running the explicit `--install` command. Do not install into a running Cinema 4D process. The complete token, install, Codex, backup, rollback, and live-test procedure is in [Codex setup](./docs/CODEX_SETUP.md).
 
 ## Client configuration
 
-Generate a random token and set it on **both** the MCP server process (via the client's `env` map, below) and the Cinema 4D launch environment. The bridge rejects mismatched requests (constant-time compare); the Node client forwards the value automatically. Strongly recommended — localhost is not a trust boundary on a shared workstation.
-
-```bash
-openssl rand -hex 16
-```
-
-Register the MCP server in your client with the token in the `env` map:
-
-```json
-{
-  "mcpServers": {
-    "cinema4d": {
-      "command": "npx",
-      "args": ["-y", "@kumoproductions/mcp-cinema4d"],
-      "env": {
-        "C4D_MCP_TOKEN": "paste-your-random-hex-here"
-      }
-    }
-  }
-}
-```
-
-| Client                       | Config file                                                                                                                         |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Claude Desktop / Claude Code | `%APPDATA%\Claude\claude_desktop_config.json` (Windows) · `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
-| Other MCP clients            | see the client's docs for registering a stdio server                                                                                |
-
-**The same `C4D_MCP_*` variables must also be set in the Cinema 4D launch environment** — the bridge plugin reads them at C4D startup. macOS: `open -a "Cinema 4D" --env C4D_MCP_TOKEN=...` (or export in your shell profile before launch). Windows: set as User environment variables and restart C4D.
-
-To change the bridge socket, set `C4D_MCP_PORT` (and optionally `C4D_MCP_HOST` — see [Security](#security)) alongside `C4D_MCP_TOKEN` in the same `env` map, plus the C4D launch env.
+Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKEN` in the Cinema 4D launch environment and the MCP server environment, use absolute Windows paths for `node.exe` and `dist\index.js`, and never commit the token. See [Codex setup](./docs/CODEX_SETUP.md) for the supported Settings UI, CLI, and `config.toml` forms.
 
 ## Tools
 
-64 tools across 16 groups. The LLM picks tools itself based on the prompt — you rarely invoke them directly. See [docs/TOOLS.md](./docs/TOOLS.md) for the full table with per-tool descriptions.
+65 tools across 16 groups are inherited from the existing implementation. Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
 
 | Group                            | Count | What's in it                                                                                                                                                                                                                       |
 | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Basics                           |   4   | `ping`, `render`, `preview_render` (Viewport renderer + Constant Lines, returns inline PNG), `reset_scene`.                                                                                                                        |
+| Basics                           |   5   | `ping`, `get_capabilities`, `render`, `preview_render` (Viewport renderer + Constant Lines, returns inline PNG), `reset_scene`.                                                                                                    |
 | Script-style                     |   5   | `exec_python` (opt-in), `call_command`, `list_plugins`, `undo`, `batch` — escape hatches + undo-grouped multi-op.                                                                                                                  |
 | Generic CRUD                     |   9   | `list_entities`, `describe`, `get_params`/`set_params`, `get_container`, `dump_shader`, `create_entity`, `remove_entity`, `set_keyframe`.                                                                                          |
 | Shot setup                       |   7   | Document state, fps / frame range / camera, `import_scene` (merge), RenderData + Take, `take_override`, `sample_transform`.                                                                                                        |
@@ -138,24 +97,13 @@ Every CRUD tool identifies entities by a typed `handle` object. The resolver rai
 
 ## Installing the bridge plugin
 
-Grab the latest `cinema4d_mcp_bridge-<version>.zip` from
-[Releases](https://github.com/kumoproductions/mcp-cinema4d/releases/latest)
-and extract the inner `cinema4d_mcp_bridge/` folder into your Cinema 4D plugins
-directory:
+The local installer accepts only a drive-letter absolute Cinema 4D 2025 preference path under the current user's `%APPDATA%\Maxon` directory. Start with a read-only plan:
 
-| OS      | Typical plugins directory                                        |
-| ------- | ---------------------------------------------------------------- |
-| Windows | `%APPDATA%\Maxon\Maxon Cinema 4D <VERSION>\plugins\`             |
-| macOS   | `~/Library/Preferences/Maxon/Maxon Cinema 4D <VERSION>/plugins/` |
+```powershell
+npm run install:c4d -- --dry-run
+```
 
-You can also register a custom search path via Cinema 4D's `Preferences → Plugins → Add` and extract the zip there instead.
-
-Launch (or restart) Cinema 4D after extracting. **The plugin only reloads when C4D restarts.**
-
-Keep the plugin version pinned to the npm package version you run — a version mismatch surfaces as `unknown command: <tool>` in the bridge log. See [CONTRIBUTING.md](./CONTRIBUTING.md) if you want to run a development checkout instead.
-
-> [!NOTE]
-> **Official releases only come from two places:** the npm package [`@kumoproductions/mcp-cinema4d`](https://www.npmjs.com/package/@kumoproductions/mcp-cinema4d) and the GitHub Releases page under [kumoproductions/mcp-cinema4d](https://github.com/kumoproductions/mcp-cinema4d/releases). If you obtained a zip or a scoped npm package from anywhere else claiming to be this plugin, treat it as untrusted.
+If discovery is ambiguous, pass an explicit path such as `C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>`. Only `--install` copies files. If the destination already exists, it is moved to a sibling `cinema4d_mcp_bridge.backup-<UTC_TIMESTAMP>` directory before the new copy is created. See [Codex setup](./docs/CODEX_SETUP.md#install-the-bridge) for the reviewed install and rollback sequence.
 
 ## Configuration
 
@@ -174,16 +122,11 @@ Even without `exec_python`, many tools mutate state: `call_command`, `set_params
 
 - **`exec_python` is opt-in.** It runs unrestricted Python on Cinema 4D's main thread (file I/O, subprocess, network). Hidden and rejected by the bridge unless `C4D_MCP_ENABLE_EXEC_PYTHON=1` is set on **both** the MCP server process and the Cinema 4D process. Turn it back off when you no longer need it — set-and-forget is how accidents happen.
 - **Python-bearing plugin types are opt-in too.** Python tag (`Tpython`), Python generator (`Opython`), MoGraph Python effector, Python field (`Fpython`), and the Xpresso Python operator all store caller-supplied source code in their container and run it on scene evaluation — i.e. they are RCE-equivalent to `exec_python`. The bridge refuses `create_entity`, `set_params`, `apply_xpresso_graph`, and `take_override` operations targeting these types unless `C4D_MCP_ENABLE_PYTHON_OPS=1` is set on the Cinema 4D side. Listing / reading / removing existing instances is unaffected.
-- **Set a shared-secret token (`C4D_MCP_TOKEN`).** Localhost is not a trust boundary — any local process running as your user can otherwise connect. See [Client configuration](#client-configuration) for the JSON snippet.
+- **Set a shared-secret token (`C4D_MCP_TOKEN`).** Localhost is not a trust boundary — any local process running as your user can otherwise connect. See [Codex setup](./docs/CODEX_SETUP.md#configure-the-shared-token).
 - **Loopback default + remote opt-in.** The bridge binds to `127.0.0.1` by default. Binding `C4D_MCP_HOST` to a non-loopback interface **refuses to start** unless `C4D_MCP_ALLOW_REMOTE=1` is also set — guarding against a one-character typo (`0.0.0.0`) exposing C4D to the LAN.
 - **Only connect MCP clients you trust.** Review their tool-use permissions so mutating tools (especially `exec_python` if opted in) are not auto-approved.
 - **Indirect prompt injection via scene content.** Scene data (object names, parameter strings, imported file paths) flows back to the LLM through `list_entities` / `describe` / `get_container` / `dump_shader` / `get_mesh`. When `exec_python` is enabled, a malicious string in a scene can steer the model into running arbitrary Python. Don't run `import_scene` against untrusted `.c4d` / `.fbx` / `.abc` files while `exec_python` is on, and rely on your MCP client's per-call approval for `exec_python` / `call_command` / `save_document` / `import_scene` rather than blanket-approving them.
 - **Audit log.** Every `exec_python` call records the code body to the local bridge log (`%TEMP%/cinema4d_mcp_bridge.log` on Windows, `$TMPDIR/cinema4d_mcp_bridge.log` on macOS) for after-the-fact review. The log is append-only with no rotation — prune it manually if it grows.
-
-```bash
-export C4D_MCP_TOKEN="$(openssl rand -hex 16)"   # set in C4D launch env too
-npx -y @kumoproductions/mcp-cinema4d
-```
 
 ## Troubleshooting
 
@@ -201,11 +144,11 @@ Still stuck? Open an [issue](https://github.com/kumoproductions/mcp-cinema4d/iss
 
 ## Known limitations
 
-- **`modeling_command make_editable` is unreliable on Cinema 4D 2026.** The SDK's `SendModelingCommand` handling of `MCOMMAND_MAKEEDITABLE` shifts across builds — sometimes it returns the new polygon object, sometimes it removes the source without inserting a replacement. **Use `current_state_to_object` instead** when you need a guaranteed polygon copy (the bridge inserts the result for you and returns its handle).
+- **Inherited observations are not 2025 verification.** Notes about `modeling_command make_editable`, node assets, node material names, and other SDK behavior came from the upstream implementation and remain unverified on Cinema 4D 2025.3.2.
 - **`list_graph_node_assets` can return an empty list** on builds where the Maxon asset repository doesn't expose node-template assets through the usual query path. The tool still returns `supported: true` with shape-correct output; treat an empty `assets` array as "discovery unavailable on this C4D build" and pass `$type` asset ids you already know (e.g. from `list_graph_nodes` on an existing material).
 - **Node material friendly names vary.** `apply_graph_description` accepts the declarative `$type` strings documented by Maxon (e.g. `"Standard Material"`), but the resolver varies between 2024 / 2025 / 2026 builds — when in doubt, pass the fully-qualified asset id returned by `list_graph_node_assets` / `list_graph_nodes` instead.
 - **`exec_python` is the only way to seed classical-shader fixtures.** A handful of E2E tests (for `dump_shader`) need to build a shader tree before asserting on it, so they skip cleanly when `C4D_MCP_ENABLE_EXEC_PYTHON` isn't set on both sides. The tools themselves don't require `exec_python`.
-- **Older Cinema 4D versions are not tested.** The CI + E2E suite targets C4D 2026. The bridge guards optional SDK constants with `getattr` fallbacks, so most tools likely work on 2024 / 2025 as well — but we don't verify that and won't accept bug reports that don't reproduce on 2026.
+- **No broad support claim is made.** The strict foundation suite is the only 2025 release gate currently defined, and even a passing run verifies only its documented path on the exact runtime tested. See [Compatibility](./docs/COMPATIBILITY.md).
 
 ## Contributing
 
