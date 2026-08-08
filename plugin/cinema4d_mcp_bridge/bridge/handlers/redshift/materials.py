@@ -49,12 +49,13 @@ def handle_rs_create_material(params: dict[str, object]) -> dict[str, object]:
             and all(callable(method) for method in (start_undo, end_undo, add_undo))
         ):
             try:
-                start_undo()
+                start_result = start_undo()
             except Exception:
                 pass
             else:
-                undo_started = True
-                undo_supported = True
+                if start_result is not False:
+                    undo_started = True
+                    undo_supported = True
 
         try:
             graph = maxon.GraphDescription.CreateGraph(

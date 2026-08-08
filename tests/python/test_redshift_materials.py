@@ -196,6 +196,17 @@ class RedshiftMaterialsTest(unittest.TestCase):
         self.assertEqual(self.document_map[self.user_document].undo_calls, [])
         self.assertEqual(self.document_map[self.user_document].undo_events, ["start"])
 
+        self.document_map[self.user_document].undo_calls.clear()
+        self.document_map[self.user_document].undo_events.clear()
+        self.user_document.StartUndo = lambda: False
+        false_start = self.handle_rs_create_material(
+            {"document_name": "user", "name": "StartReturnsFalse"}
+        )
+
+        self.assertFalse(false_start["undo_supported"])
+        self.assertEqual(self.document_map[self.user_document].undo_calls, [])
+        self.assertEqual(self.document_map[self.user_document].undo_events, [])
+
     def test_reuses_exactly_one_same_name_material_when_requested(self):
         material = FakeMaterial("RS_Mat")
         self.document_map[self.user_document].add_material(material)
