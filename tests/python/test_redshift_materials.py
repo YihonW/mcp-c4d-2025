@@ -46,9 +46,9 @@ PORTS = {
     NODE_ASSETS["output"]: (["surface", "displacement"], []),
     NODE_ASSETS["standard"]: (
         ["base_color", "metalness", "refl_roughness", "bump_input"],
-        ["out"],
+        ["outcolor"],
     ),
-    NODE_ASSETS["texture"]: (["tex0"], ["out"]),
+    NODE_ASSETS["texture"]: (["tex0"], ["outcolor"]),
     NODE_ASSETS["bump"]: (["input", "strength"], ["out"]),
     NODE_ASSETS["displacement"]: (["input", "scale"], ["out"]),
 }
@@ -61,6 +61,7 @@ class FakePort:
         self.value = None
         self.connections = []
         self.children = children or {}
+        self.silent_ignore_invalid_value = False
 
     def IsValid(self):
         return True
@@ -78,8 +79,13 @@ class FakePort:
 
     def SetPortValue(self, value):
         if self.allowed_values is not None and value not in self.allowed_values:
+            if self.silent_ignore_invalid_value:
+                return
             raise ValueError(f"unknown color space: {value}")
         self.value = value
+
+    def GetPortValue(self):
+        return self.value
 
     def Connect(self, target):
         self.connections.append(target)
@@ -96,6 +102,9 @@ class FakePortList:
 
     def FindChild(self, name):
         return self.ports.get(str(name), FakeInvalidPort())
+
+    def GetChildren(self):
+        return iter(self.ports.values())
 
 
 class FakeGraphNode:
@@ -118,6 +127,7 @@ class FakeGraphNode:
             f"{asset_id}.{port_id}": FakePort(f"{asset_id}.{port_id}") for port_id in outputs
         }
         self.children = []
+        self.parent = None
 
     def IsValid(self):
         return True
@@ -139,6 +149,9 @@ class FakeGraphNode:
     def GetChildren(self):
         return iter(self.children)
 
+    def Remove(self):
+        self.parent.children.remove(self)
+
 
 class FakeGraph:
     def __init__(self, material):
@@ -148,9 +161,13 @@ class FakeGraph:
             FakeGraphNode("output", NODE_ASSETS["output"]),
             FakeGraphNode("standard", NODE_ASSETS["standard"]),
         ]
+        for node in self.root.children:
+            node.parent = self.root
         self.transactions = []
         self.clone_supported = True
         self.restore_raises = False
+        self.silent_ignore_color_space = False
+        self.raise_on_add_child = False
 
     @property
     def nodes(self):
@@ -163,12 +180,16 @@ class FakeGraph:
         return self.root
 
     def AddChild(self, node_id, asset_id, _data):
+        if self.raise_on_add_child:
+            raise RuntimeError("injected low-level graph failure")
         node = FakeGraphNode(str(node_id), str(asset_id))
+        if node.asset_id == NODE_ASSETS["texture"]:
+            node.GetInputs().FindChild(f"{node.asset_id}.tex0").FindChild(
+                "colorspace"
+            ).silent_ignore_invalid_value = self.silent_ignore_color_space
+        node.parent = self.root
         self.root.children.append(node)
         return node
-
-    def RemoveNode(self, node):
-        self.root.children.remove(node)
 
     def BeginTransaction(self):
         graph = self
@@ -206,6 +227,8 @@ class FakeGraph:
 
     def _restore(self, snapshot):
         self.root.children = [FakeGraphNode(node_id, asset_id) for node_id, asset_id in snapshot]
+        for node in self.root.children:
+            node.parent = self.root
 
 
 class FakeMaterialDocument:
@@ -267,6 +290,7 @@ class FakePbrGraphDescription(FakeGraphDescription):
         self.graph_mutation_calls = []
         self.raise_on_apply = False
         self.reject_raw_assets = True
+        self.partial_write_on_apply = False
 
     def graph_for(self, material):
         return self.graphs.setdefault(material, FakeGraph(material))
@@ -277,6 +301,9 @@ class FakePbrGraphDescription(FakeGraphDescription):
 
     def ApplyDescription(self, graph, description, *, nodeSpace):
         self.graph_mutation_calls.append((graph, description, str(nodeSpace)))
+        if self.partial_write_on_apply:
+            graph.AddChild("orphan", NODE_ASSETS["texture"], {})
+            raise RuntimeError("node type reference is not associated with any IDs")
         if self.raise_on_apply:
             raise RuntimeError("injected graph transaction failure")
         if self.reject_raw_assets and any("$type" in operation for operation in description):
@@ -543,23 +570,31 @@ class RedshiftMaterialsTest(unittest.TestCase):
                 NODE_ASSETS["displacement"],
             ],
         )
-        _, description, _ = self.graph_mutation_calls[0]
-        texture_specs = [
-            item for item in description if item.get("$type") == NODE_ASSETS["texture"]
-        ]
-        self.assertEqual(len(texture_specs), 5)
-        self.assertTrue(
-            all("#~.tex0/path" in item for item in texture_specs),
-            "each texture must use the exact path port rather than a display label",
+        self.assertEqual(self.graph_mutation_calls, [])
+        graph = self.graph_description.graph_for(self.document_map[self.user_document].materials[0])
+        nodes = {node.GetId(): node for node in graph.root.GetChildren()}
+        texture_output = (
+            nodes["base_color_texture"].GetOutputs().FindChild(f"{NODE_ASSETS['texture']}.outcolor")
         )
-        self.assertIn(
-            {"$query": {"$id": "standard"}, "#~.base_color": {"$id": "base_color_texture"}},
-            description,
+        self.assertEqual(
+            [port.GetId() for port in texture_output.connections],
+            [f"{NODE_ASSETS['standard']}.base_color"],
         )
-        self.assertIn(
-            {"$query": {"$id": "standard"}, "#~.refl_roughness": {"$id": "roughness_texture"}},
-            description,
-        )
+        expected_color_spaces = {
+            "base_color_texture": "",
+            "metalness_texture": "acescg",
+            "roughness_texture": "RS_INPUT_COLORSPACE_RAW",
+            "normal_texture": "RS_INPUT_COLORSPACE_RAW",
+            "displacement_texture": "RS_INPUT_COLORSPACE_RAW",
+        }
+        for node_id, expected_value in expected_color_spaces.items():
+            color_space = (
+                nodes[node_id]
+                .GetInputs()
+                .FindChild(f"{NODE_ASSETS['texture']}.tex0")
+                .FindChild("colorspace")
+            )
+            self.assertEqual(color_space.GetPortValue(), expected_value)
 
     def test_updates_only_the_supplied_channel(self):
         self.add_pbr_material()
@@ -682,13 +717,15 @@ class RedshiftMaterialsTest(unittest.TestCase):
 
         self.assertTrue(result["replaced_graph"])
         self.assertEqual(result["rollback"], "not_needed")
-        _, description, _ = self.graph_mutation_calls[0]
-        self.assertIn(
-            {
-                "$query": {"$id": "output"},
-                "#~.surface": {"$id": "standard", "#~.out": True},
-            },
-            description,
+        self.assertEqual(self.graph_mutation_calls, [])
+        graph = self.graph_description.graph_for(material)
+        nodes = {node.GetId(): node for node in graph.root.GetChildren()}
+        standard_output = (
+            nodes["standard"].GetOutputs().FindChild(f"{NODE_ASSETS['standard']}.outcolor")
+        )
+        self.assertEqual(
+            [port.GetId() for port in standard_output.connections],
+            [f"{NODE_ASSETS['output']}.surface"],
         )
         self.assertEqual(
             self.graph_description.graph_for(material).nodes[:2],
@@ -724,10 +761,11 @@ class RedshiftMaterialsTest(unittest.TestCase):
         material = self.add_pbr_material()
         graph = self.graph_description.graph_for(material)
         before = graph.Clone()
-        self.graph_description.reject_raw_assets = False
-        self.graph_description.raise_on_apply = True
+        graph.raise_on_add_child = True
 
-        with self.assertRaisesRegex(RuntimeError, "rollback=succeeded"):
+        with self.assertRaisesRegex(
+            RuntimeError, "injected low-level graph failure; rollback=succeeded"
+        ):
             self.handle_rs_set_material_pbr(
                 {
                     "document_name": "user",
@@ -742,11 +780,13 @@ class RedshiftMaterialsTest(unittest.TestCase):
     def test_replace_restore_failure_reports_partial_rollback(self):
         material = self.add_pbr_material()
         graph = self.graph_description.graph_for(material)
-        self.graph_description.reject_raw_assets = False
-        self.graph_description.raise_on_apply = True
+        graph.raise_on_add_child = True
         graph.restore_raises = True
 
-        with self.assertRaisesRegex(RuntimeError, "rollback=partial.*injected restore failure"):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "injected low-level graph failure; rollback=partial.*injected restore failure",
+        ):
             self.handle_rs_set_material_pbr(
                 {
                     "document_name": "user",
@@ -780,6 +820,41 @@ class RedshiftMaterialsTest(unittest.TestCase):
         before = graph.Clone()
 
         with self.assertRaisesRegex(ValueError, "unknown color space"):
+            self.handle_rs_set_material_pbr(
+                {
+                    "document_name": "user",
+                    "material": {"kind": "material", "name": "RS_Mat"},
+                    "base_color": {"path": "C:/textures/base.exr", "color_space": "unknown"},
+                }
+            )
+
+        self.assertEqual(graph.Clone(), before)
+        self.assertEqual(graph.transactions[-2:], ["begin", "rollback"])
+
+    def test_raw_asset_operations_skip_apply_description_to_prevent_partial_fallback_writes(self):
+        material = self.add_pbr_material()
+        graph = self.graph_description.graph_for(material)
+        self.graph_description.partial_write_on_apply = True
+
+        result = self.handle_rs_set_material_pbr(
+            {
+                "document_name": "user",
+                "material": {"kind": "material", "name": "RS_Mat"},
+                "base_color": {"path": "C:/textures/base.exr"},
+            }
+        )
+
+        self.assertEqual(result["created_nodes"][0]["id"], "base_color_texture")
+        self.assertEqual(self.graph_mutation_calls, [])
+        self.assertNotIn("orphan", [node["id"] for node in graph.nodes])
+
+    def test_rejects_silently_ignored_color_space_and_rolls_back_the_transaction(self):
+        material = self.add_pbr_material()
+        graph = self.graph_description.graph_for(material)
+        graph.silent_ignore_color_space = True
+        before = graph.Clone()
+
+        with self.assertRaisesRegex(RuntimeError, "color_space.*readback"):
             self.handle_rs_set_material_pbr(
                 {
                     "document_name": "user",

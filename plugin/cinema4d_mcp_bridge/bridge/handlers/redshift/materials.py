@@ -220,17 +220,23 @@ def _snapshot_graph(graph):
 
 
 def _can_clear_graph(graph) -> bool:
-    return callable(getattr(graph, "RemoveNode", None))
+    try:
+        children = list(graph.GetRoot().GetChildren())
+    except Exception:
+        return False
+    return all(callable(getattr(child, "Remove", None)) for child in children)
 
 
 def _clear_graph(graph) -> None:
-    remove_node = getattr(graph, "RemoveNode", None)
-    if not callable(remove_node):
-        raise RuntimeError("replace_graph is unsupported: graph cannot be cleared safely")
-    root = graph.GetRoot()
-    children = list(root.GetChildren())
+    try:
+        children = list(graph.GetRoot().GetChildren())
+    except Exception as exc:
+        raise RuntimeError("replace_graph is unsupported: graph cannot be cleared safely") from exc
     for child in children:
-        remove_node(child)
+        remove = getattr(child, "Remove", None)
+        if not callable(remove):
+            raise RuntimeError("replace_graph is unsupported: graph cannot be cleared safely")
+        remove()
 
 
 def _start_material_undo(document, material) -> tuple[bool, object | None, object | None]:
@@ -280,14 +286,25 @@ def _coerce_pbr_port_value(value: object) -> object:
 def _set_or_connect(node_map: dict[str, object], node_id: str, port_id: str, value: object) -> None:
     target = _runtime_port(node_map[node_id], port_id, "in")
     if not isinstance(value, dict) or "$id" not in value:
-        target.SetPortValue(_coerce_pbr_port_value(value))
+        port_value = _coerce_pbr_port_value(value)
+        target.SetPortValue(port_value)
+        if port_id == _TEXTURE_COLOR_SPACE_PORT:
+            read_value = getattr(target, "GetPortValue", None)
+            if not callable(read_value):
+                read_value = getattr(target, "GetEffectivePortValue", None)
+            if not callable(read_value):
+                raise RuntimeError(
+                    "texture color_space readback is unavailable; refusing graph mutation"
+                )
+            if read_value() != port_value:
+                raise RuntimeError("texture color_space readback mismatch; refusing graph mutation")
         return
     source = node_map.get(str(value["$id"]))
     if source is None:
         raise RuntimeError(f"connection source node not found: {value['$id']!r}")
-    source_port_id = next(
-        (key for key, enabled in value.items() if key != "$id" and enabled is True), "#~.out"
-    )
+    source_port_id = value.get("$output")
+    if not isinstance(source_port_id, str) or not source_port_id.startswith("#~."):
+        raise RuntimeError("connection source output must be an exact runtime port ID")
     source_port = _runtime_port(source, source_port_id, "out")
     source_port.Connect(target)
 
@@ -388,7 +405,7 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
                     {"$type": NODE_ASSETS["standard"], "$id": standard_id},
                     {
                         "$query": {"$id": output_id},
-                        "#~.surface": {"$id": standard_id, "#~.out": True},
+                        "#~.surface": {"$id": standard_id, "$output": "#~.outcolor"},
                     },
                 ]
             )
@@ -408,7 +425,13 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
                 texture_id = f"{channel}_texture"
                 operations.append(_texture_description(texture_id, path, color_space))
                 operations.append(
-                    {"$query": {"$id": standard_id}, _STANDARD_PORTS[channel]: {"$id": texture_id}}
+                    {
+                        "$query": {"$id": standard_id},
+                        _STANDARD_PORTS[channel]: {
+                            "$id": texture_id,
+                            "$output": "#~.outcolor",
+                        },
+                    }
                 )
                 created_nodes.append({"id": texture_id, "asset_id": NODE_ASSETS["texture"]})
                 color_spaces[channel] = color_space
@@ -447,12 +470,12 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
                     {
                         "$type": NODE_ASSETS["bump"],
                         "$id": "normal_bump",
-                        "#~.input": {"$id": "normal_texture"},
+                        "#~.input": {"$id": "normal_texture", "$output": "#~.outcolor"},
                         "#~.strength": strength,
                     },
                     {
                         "$query": {"$id": standard_id},
-                        "#~.bump_input": {"$id": "normal_bump", "#~.out": True},
+                        "#~.bump_input": {"$id": "normal_bump", "$output": "#~.out"},
                     },
                 ]
             )
@@ -476,14 +499,17 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
                     {
                         "$type": NODE_ASSETS["displacement"],
                         "$id": "displacement_node",
-                        "#~.input": {"$id": "displacement_texture"},
+                        "#~.input": {
+                            "$id": "displacement_texture",
+                            "$output": "#~.outcolor",
+                        },
                         "#~.scale": scale,
                     },
                     {
                         "$query": {"$id": output_id},
                         "#~.displacement": {
                             "$id": "displacement_node",
-                            "#~.out": True,
+                            "$output": "#~.out",
                         },
                     },
                 ]
@@ -502,14 +528,12 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
             with graph.BeginTransaction() as transaction:
                 if replace_graph:
                     _clear_graph(graph)
-                try:
+                if any("$type" in operation for operation in operation_list):
+                    _apply_pbr_lowlevel(graph, operation_list)
+                else:
                     maxon.GraphDescription.ApplyDescription(
                         graph, list(operation_list), nodeSpace=maxon.Id(RS_NODE_SPACE_ID)
                     )
-                except Exception as exc:
-                    if "is not associated with any IDs" not in str(exc):
-                        raise
-                    _apply_pbr_lowlevel(graph, operation_list)
                 transaction.Commit()
         except Exception as exc:
             if not replace_graph:
