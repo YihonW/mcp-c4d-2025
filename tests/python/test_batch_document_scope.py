@@ -175,6 +175,144 @@ class BatchDocumentScopeTest(unittest.TestCase):
         self.assertIs(self.active_doc, self.user_doc)
         self.assertEqual(self.active_changes, [])
 
+    def test_scoped_batch_rejects_every_document_escape_operation_before_it_runs(self):
+        forbidden_ops = (
+            "set_active_document",
+            "new_document",
+            "open_document",
+            "close_document",
+            "reset_scene",
+            "exec_python",
+            "call_command",
+        )
+
+        for forbidden_op in forbidden_ops:
+            with self.subTest(op=forbidden_op):
+                self.active_doc = self.user_doc
+                self.user_doc.writes.clear()
+                self.temp_doc.writes.clear()
+                invoked = []
+
+                def escape(_params, op_name=forbidden_op, calls=invoked):
+                    calls.append(op_name)
+                    self.fake_modules["c4d.documents"].SetActiveDocument(self.user_doc)
+                    return {"escaped": True}
+
+                def write_marker(_params):
+                    self.active_doc.writes.append("after-escape")
+                    return {"document": self.active_doc.name}
+
+                self.handlers.HANDLERS = {
+                    forbidden_op: escape,
+                    "write_marker": write_marker,
+                }
+
+                result = self.script.handle_batch(
+                    {
+                        "document_name": self.temp_doc.name,
+                        "undo_group": False,
+                        "ops": [{"op": forbidden_op}, {"op": "write_marker"}],
+                    }
+                )
+
+                self.assertEqual(self.user_doc.writes, [])
+                self.assertEqual(self.temp_doc.writes, [])
+                self.assertEqual(invoked, [])
+                self.assertEqual(result["count"], 1)
+                self.assertIn(
+                    "not allowed in a document-scoped batch",
+                    result["results"][0]["error"],
+                )
+                self.assertIs(self.active_doc, self.user_doc)
+
+    def test_scoped_batch_stops_when_an_allowed_handler_changes_active_document(self):
+        def change_active(_params):
+            self.fake_modules["c4d.documents"].SetActiveDocument(self.user_doc)
+            return {"changed": True}
+
+        def write_marker(_params):
+            self.active_doc.writes.append("must-not-run")
+            return {"document": self.active_doc.name}
+
+        self.handlers.HANDLERS = {
+            "change_active": change_active,
+            "write_marker": write_marker,
+        }
+
+        result = self.script.handle_batch(
+            {
+                "document_name": self.temp_doc.name,
+                "undo_group": False,
+                "ops": [{"op": "change_active"}, {"op": "write_marker"}],
+            }
+        )
+
+        self.assertEqual(self.user_doc.writes, [])
+        self.assertEqual(self.temp_doc.writes, [])
+        self.assertEqual(result["count"], 1)
+        self.assertIn("changed the active document", result["results"][0]["error"])
+        self.assertIs(self.active_doc, self.user_doc)
+
+    def test_scoped_batch_stops_when_a_failing_handler_also_changes_active_document(self):
+        def change_active_then_fail(_params):
+            self.fake_modules["c4d.documents"].SetActiveDocument(self.user_doc)
+            raise RuntimeError("handler failed")
+
+        def write_marker(_params):
+            self.active_doc.writes.append("must-not-run")
+            return {"document": self.active_doc.name}
+
+        self.handlers.HANDLERS = {
+            "change_active_then_fail": change_active_then_fail,
+            "write_marker": write_marker,
+        }
+
+        result = self.script.handle_batch(
+            {
+                "document_name": self.temp_doc.name,
+                "undo_group": False,
+                "ops": [{"op": "change_active_then_fail"}, {"op": "write_marker"}],
+            }
+        )
+
+        self.assertEqual(self.user_doc.writes, [])
+        self.assertEqual(result["count"], 1)
+        self.assertIn("handler failed", result["results"][0]["error"])
+        self.assertIn("changed the active document", result["results"][0]["error"])
+        self.assertIs(self.active_doc, self.user_doc)
+
+    def test_scoped_batch_restores_previous_active_when_end_undo_raises(self):
+        def fail_end_undo():
+            raise RuntimeError("EndUndo failed")
+
+        self.temp_doc.EndUndo = fail_end_undo
+        self.handlers.HANDLERS = {"active": lambda _params: {"document": self.active_doc.name}}
+
+        with self.assertRaisesRegex(RuntimeError, "EndUndo failed"):
+            self.script.handle_batch(
+                {
+                    "document_name": self.temp_doc.name,
+                    "ops": [{"op": "active"}],
+                }
+            )
+
+        self.assertIs(self.active_doc, self.user_doc)
+
+    def test_unscoped_batch_still_allows_existing_document_switching_operations(self):
+        invoked = []
+
+        def call_command(_params):
+            invoked.append("call_command")
+            return {"ok": True}
+
+        self.handlers.HANDLERS = {"call_command": call_command}
+
+        result = self.script.handle_batch({"ops": [{"op": "call_command"}]})
+
+        self.assertEqual(invoked, ["call_command"])
+        self.assertEqual(result["results"][0]["result"], {"ok": True})
+        self.assertIs(self.active_doc, self.user_doc)
+
     @staticmethod
     def _load_module(name: str, path: Path):
         spec = importlib.util.spec_from_file_location(name, path)

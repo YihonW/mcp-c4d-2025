@@ -28,6 +28,18 @@ from ._helpers import (
     _shader_at,
 )
 
+_SCOPED_BATCH_FORBIDDEN_OPS = frozenset(
+    {
+        "set_active_document",
+        "new_document",
+        "open_document",
+        "close_document",
+        "reset_scene",
+        "exec_python",
+        "call_command",
+    }
+)
+
 
 def _exec_python_enabled() -> bool:
     """Return True when the operator has opted IN to exec_python."""
@@ -204,7 +216,9 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
         are recorded in the per-op result but the batch keeps running.
       document_name: optional unique open-document name. The named document is
         made active only for this main-thread dispatch; the prior active
-        document is restored in finally.
+        document is restored in finally. Document lifecycle, arbitrary Python,
+        and command handlers are rejected in this mode, and the active document
+        is checked before and after every allowed handler.
       undo_group: bool (default True). Set False when the batch itself invokes
         undo or combines read/render/save operations with independently
         undo-wrapped mutations.
@@ -244,6 +258,19 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
 
     results: list[dict[str, Any]] = []
     undo_started = False
+
+    def is_open_document(candidate) -> bool:
+        current = documents.GetFirstDocument()
+        while current is not None:
+            if current is candidate:
+                return True
+            current = current.GetNext()
+        return False
+
+    def restore_scoped_target() -> None:
+        if doc is not None and is_open_document(doc):
+            documents.SetActiveDocument(doc)
+
     try:
         if scoped and documents.GetActiveDocument() is not doc:
             documents.SetActiveDocument(doc)
@@ -260,6 +287,15 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 continue
             name = op.get("op")
             args = op.get("args") or {}
+            if scoped and name in _SCOPED_BATCH_FORBIDDEN_OPS:
+                results.append(
+                    {
+                        "index": i,
+                        "op": name,
+                        "error": f"{name!r} is not allowed in a document-scoped batch",
+                    }
+                )
+                break
             if name == "batch":
                 results.append({"index": i, "op": name, "error": "nested batch not allowed"})
                 if stop:
@@ -271,24 +307,52 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 if stop:
                     break
                 continue
+            if scoped and documents.GetActiveDocument() is not doc:
+                restore_scoped_target()
+                results.append(
+                    {
+                        "index": i,
+                        "op": name,
+                        "error": f"document scope lost before op {name!r}",
+                    }
+                )
+                break
             try:
                 r = handler(args)
-                results.append({"index": i, "op": name, "result": r})
             except Exception as exc:
-                results.append({"index": i, "op": name, "error": f"{type(exc).__name__}: {exc}"})
+                error = f"{type(exc).__name__}: {exc}"
+                if scoped and documents.GetActiveDocument() is not doc:
+                    restore_scoped_target()
+                    error += "; handler changed the active document"
+                    results.append({"index": i, "op": name, "error": error})
+                    break
+                results.append({"index": i, "op": name, "error": error})
                 if stop:
                     break
+            else:
+                if scoped and documents.GetActiveDocument() is not doc:
+                    restore_scoped_target()
+                    results.append(
+                        {
+                            "index": i,
+                            "op": name,
+                            "error": f"op {name!r} changed the active document",
+                        }
+                    )
+                    break
+                results.append({"index": i, "op": name, "result": r})
     finally:
         try:
             if undo_started:
                 doc.EndUndo()
         finally:
-            if scoped and previous_doc is not None:
-                current = documents.GetFirstDocument()
-                while current is not None and current is not previous_doc:
-                    current = current.GetNext()
-                if current is previous_doc and documents.GetActiveDocument() is not previous_doc:
-                    documents.SetActiveDocument(previous_doc)
+            if (
+                scoped
+                and previous_doc is not None
+                and is_open_document(previous_doc)
+                and documents.GetActiveDocument() is not previous_doc
+            ):
+                documents.SetActiveDocument(previous_doc)
             if scoped:
                 c4d.EventAdd()
 

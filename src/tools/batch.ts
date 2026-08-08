@@ -10,14 +10,14 @@ export const batchTool = defineTool({
   group: "script",
   title: "Batch Execute",
   description:
-    "Run many generic ops in one main-thread RPC. Each op is applied in order; by default failures are recorded per op and the batch continues. The whole batch is wrapped in a single undo group unless undo_group=false. Pass document_name to bind every active-document operation to one uniquely named open document and restore the prior active document afterward.",
+    "Run many generic ops in one main-thread RPC. Each op is applied in order; by default failures are recorded per op and the batch continues. The whole batch is wrapped in a single undo group unless undo_group=false. Pass document_name to bind every allowed active-document operation to one uniquely named open document and restore the prior active document afterward; document lifecycle, arbitrary Python, and command operations are rejected in this scoped mode.",
   inputShape: {
     document_name: z
       .string()
       .min(1)
       .optional()
       .describe(
-        "Optional unique open-document name. The bridge activates it atomically for this batch and restores the prior active document in finally.",
+        "Optional unique open-document name. The bridge activates it atomically for allowed operations, rejects document-switching/bypass operations, verifies the target around every handler, and restores the prior active document in finally.",
       ),
     undo_group: z
       .boolean()
