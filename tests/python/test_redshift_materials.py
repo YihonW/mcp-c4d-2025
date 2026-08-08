@@ -42,42 +42,151 @@ class FakeMaterial:
         return self.next
 
 
+PORTS = {
+    NODE_ASSETS["output"]: (["surface", "displacement"], []),
+    NODE_ASSETS["standard"]: (
+        ["base_color", "metalness", "refl_roughness", "bump_input"],
+        ["out"],
+    ),
+    NODE_ASSETS["texture"]: (["tex0"], ["out"]),
+    NODE_ASSETS["bump"]: (["input", "strength"], ["out"]),
+    NODE_ASSETS["displacement"]: (["input", "scale"], ["out"]),
+}
+
+
+class FakePort:
+    def __init__(self, port_id, allowed_values=None, children=None):
+        self.port_id = port_id
+        self.allowed_values = allowed_values
+        self.value = None
+        self.connections = []
+        self.children = children or {}
+
+    def IsValid(self):
+        return True
+
+    def GetId(self):
+        return self.port_id
+
+    def GetValue(self, attribute):
+        if attribute == "net.maxon.node.attribute.enumvalues":
+            return self.allowed_values
+        return None
+
+    def FindChild(self, name):
+        return self.children.get(str(name), FakeInvalidPort())
+
+    def SetPortValue(self, value):
+        if self.allowed_values is not None and value not in self.allowed_values:
+            raise ValueError(f"unknown color space: {value}")
+        self.value = value
+
+    def Connect(self, target):
+        self.connections.append(target)
+
+
+class FakeInvalidPort:
+    def IsValid(self):
+        return False
+
+
+class FakePortList:
+    def __init__(self, ports):
+        self.ports = ports
+
+    def FindChild(self, name):
+        return self.ports.get(str(name), FakeInvalidPort())
+
+
+class FakeGraphNode:
+    def __init__(self, node_id, asset_id=None):
+        self.node_id = node_id
+        self.asset_id = asset_id
+        inputs, outputs = PORTS.get(asset_id, ([], []))
+        self.inputs = {
+            f"{asset_id}.{port_id}": FakePort(f"{asset_id}.{port_id}") for port_id in inputs
+        }
+        if asset_id == NODE_ASSETS["texture"]:
+            self.inputs[f"{asset_id}.tex0"] = FakePort(
+                f"{asset_id}.tex0",
+                children={
+                    "path": FakePort("path"),
+                    "colorspace": FakePort("colorspace", {"", "RS_INPUT_COLORSPACE_RAW", "acescg"}),
+                },
+            )
+        self.outputs = {
+            f"{asset_id}.{port_id}": FakePort(f"{asset_id}.{port_id}") for port_id in outputs
+        }
+        self.children = []
+
+    def IsValid(self):
+        return True
+
+    def GetId(self):
+        return self.node_id
+
+    def GetValue(self, attribute):
+        if attribute == "net.maxon.node.attribute.assetid":
+            return self.asset_id
+        return None
+
+    def GetInputs(self):
+        return FakePortList(self.inputs)
+
+    def GetOutputs(self):
+        return FakePortList(self.outputs)
+
+    def GetChildren(self):
+        return iter(self.children)
+
+
 class FakeGraph:
     def __init__(self, material):
         self.material = material
-        self.nodes = [
-            {"id": "output", "asset_id": NODE_ASSETS["output"]},
-            {"id": "standard", "asset_id": NODE_ASSETS["standard"]},
+        self.root = FakeGraphNode("root")
+        self.root.children = [
+            FakeGraphNode("output", NODE_ASSETS["output"]),
+            FakeGraphNode("standard", NODE_ASSETS["standard"]),
         ]
         self.transactions = []
         self.clone_supported = True
-        self.color_spaces = {"color", "raw", "acescg"}
-        self.port_ids = {
-            (NODE_ASSETS["bump"], "input"): "#~.input",
-            (NODE_ASSETS["bump"], "output"): "#~.out",
-            (NODE_ASSETS["bump"], "strength"): "#~.strength",
-            (NODE_ASSETS["displacement"], "input"): "#~.input",
-            (NODE_ASSETS["displacement"], "output"): "#~.out",
-            (NODE_ASSETS["displacement"], "scale"): "#~.scale",
-            (NODE_ASSETS["standard"], "normal_input"): "#~.bump_input",
-            (NODE_ASSETS["standard"], "surface_output"): "#~.out",
-            (NODE_ASSETS["output"], "displacement_input"): "#~.displacement",
-            (NODE_ASSETS["output"], "surface_input"): "#~.surface",
-        }
+        self.restore_raises = False
+
+    @property
+    def nodes(self):
+        return [
+            {"id": node.GetId(), "asset_id": node.GetValue("net.maxon.node.attribute.assetid")}
+            for node in self.root.children
+        ]
+
+    def GetRoot(self):
+        return self.root
+
+    def AddChild(self, node_id, asset_id, _data):
+        node = FakeGraphNode(str(node_id), str(asset_id))
+        self.root.children.append(node)
+        return node
+
+    def RemoveNode(self, node):
+        self.root.children.remove(node)
 
     def BeginTransaction(self):
         graph = self
 
         class Transaction:
             def __enter__(self):
+                self.snapshot = graph.Clone()
+                self.committed = False
                 graph.transactions.append("begin")
                 return self
 
             def Commit(self):
+                self.committed = True
                 graph.transactions.append("commit")
 
             def __exit__(self, exc_type, _exc, _traceback):
-                if exc_type is not None:
+                if exc_type is not None or not self.committed:
+                    graph._restore(self.snapshot)
                     graph.transactions.append("rollback")
 
         return Transaction()
@@ -85,16 +194,18 @@ class FakeGraph:
     def Clone(self):
         if not self.clone_supported:
             raise RuntimeError("clone unavailable")
-        return [dict(node) for node in self.nodes]
+        return [
+            (node.GetId(), node.GetValue("net.maxon.node.attribute.assetid"))
+            for node in self.root.children
+        ]
 
     def Restore(self, snapshot):
-        self.nodes = [dict(node) for node in snapshot]
+        if self.restore_raises:
+            raise RuntimeError("injected restore failure")
+        self._restore(snapshot)
 
-    def ResolvePort(self, asset_id, role):
-        return self.port_ids.get((asset_id, role))
-
-    def ValidateColorSpace(self, color_space):
-        return color_space in self.color_spaces
+    def _restore(self, snapshot):
+        self.root.children = [FakeGraphNode(node_id, asset_id) for node_id, asset_id in snapshot]
 
 
 class FakeMaterialDocument:
@@ -103,6 +214,7 @@ class FakeMaterialDocument:
         self.materials = list(materials)
         self.undo_calls = []
         self.undo_events = []
+        self.raise_on_add_undo = False
         self._link_materials()
 
     def _link_materials(self):
@@ -117,6 +229,8 @@ class FakeMaterialDocument:
     def AddUndo(self, undo_type, material):
         self.undo_calls.append((undo_type, material))
         self.undo_events.append(("add", undo_type, material))
+        if self.raise_on_add_undo:
+            raise RuntimeError("injected AddUndo failure")
 
     def StartUndo(self):
         self.undo_events.append("start")
@@ -152,6 +266,7 @@ class FakePbrGraphDescription(FakeGraphDescription):
         self.graphs = {}
         self.graph_mutation_calls = []
         self.raise_on_apply = False
+        self.reject_raw_assets = True
 
     def graph_for(self, material):
         return self.graphs.setdefault(material, FakeGraph(material))
@@ -164,13 +279,9 @@ class FakePbrGraphDescription(FakeGraphDescription):
         self.graph_mutation_calls.append((graph, description, str(nodeSpace)))
         if self.raise_on_apply:
             raise RuntimeError("injected graph transaction failure")
-        created = []
-        for operation in description:
-            if "$type" in operation:
-                node = {"id": operation["$id"], "asset_id": operation["$type"]}
-                graph.nodes.append(node)
-                created.append(node["id"])
-        return {node_id: object() for node_id in created}
+        if self.reject_raw_assets and any("$type" in operation for operation in description):
+            raise RuntimeError("node type reference is not associated with any IDs")
+        return {}
 
 
 class RedshiftMaterialsTest(unittest.TestCase):
@@ -180,6 +291,8 @@ class RedshiftMaterialsTest(unittest.TestCase):
         )
         self.c4d.UNDOTYPE_NEW = 100
         self.maxon, _ = make_maxon_runtime(MATERIAL_ASSETS)
+        self.maxon.DataDictionary = dict
+        self.maxon.Vector = lambda x, y, z: [x, y, z]
         self.redshift = make_redshift_runtime()
         self.document_map = {
             document: FakeMaterialDocument(document) for document in self.document_state.items
@@ -206,6 +319,7 @@ class RedshiftMaterialsTest(unittest.TestCase):
 
         parent_helpers._require_abs_path = require_abs_path
         parent_helpers._require_writable_path = lambda value: str(value)
+        parent_helpers._resolve_handle = lambda value: value
         self.modules = {
             "c4d": self.c4d,
             "c4d.documents": self.documents,
@@ -583,6 +697,99 @@ class RedshiftMaterialsTest(unittest.TestCase):
                 {"id": "standard", "asset_id": NODE_ASSETS["standard"]},
             ],
         )
+
+    def test_replace_rebuilds_without_requiring_legacy_output_or_standard_nodes(self):
+        material = self.add_pbr_material()
+        self.graph_description.graph_for(material).root.children.clear()
+
+        result = self.handle_rs_set_material_pbr(
+            {
+                "document_name": "user",
+                "material": {"kind": "material", "name": "RS_Mat"},
+                "replace_graph": True,
+                "roughness": 0.35,
+            }
+        )
+
+        self.assertTrue(result["replaced_graph"])
+        self.assertEqual(
+            self.graph_description.graph_for(material).nodes[:2],
+            [
+                {"id": "output", "asset_id": NODE_ASSETS["output"]},
+                {"id": "standard", "asset_id": NODE_ASSETS["standard"]},
+            ],
+        )
+
+    def test_replace_apply_failure_restores_snapshot_and_reports_rollback_status(self):
+        material = self.add_pbr_material()
+        graph = self.graph_description.graph_for(material)
+        before = graph.Clone()
+        self.graph_description.reject_raw_assets = False
+        self.graph_description.raise_on_apply = True
+
+        with self.assertRaisesRegex(RuntimeError, "rollback=succeeded"):
+            self.handle_rs_set_material_pbr(
+                {
+                    "document_name": "user",
+                    "material": {"kind": "material", "name": "RS_Mat"},
+                    "replace_graph": True,
+                    "roughness": 0.35,
+                }
+            )
+
+        self.assertEqual(graph.Clone(), before)
+
+    def test_replace_restore_failure_reports_partial_rollback(self):
+        material = self.add_pbr_material()
+        graph = self.graph_description.graph_for(material)
+        self.graph_description.reject_raw_assets = False
+        self.graph_description.raise_on_apply = True
+        graph.restore_raises = True
+
+        with self.assertRaisesRegex(RuntimeError, "rollback=partial.*injected restore failure"):
+            self.handle_rs_set_material_pbr(
+                {
+                    "document_name": "user",
+                    "material": {"kind": "material", "name": "RS_Mat"},
+                    "replace_graph": True,
+                    "roughness": 0.35,
+                }
+            )
+
+    def test_ends_undo_group_when_add_undo_fails(self):
+        self.add_pbr_material()
+        document = self.document_map[self.user_document]
+        document.raise_on_add_undo = True
+
+        result = self.handle_rs_set_material_pbr(
+            {
+                "document_name": "user",
+                "material": {"kind": "material", "name": "RS_Mat"},
+                "roughness": 0.35,
+            }
+        )
+
+        self.assertFalse(result["undo_supported"])
+        self.assertEqual(
+            document.undo_events[:3], ["start", ("add", 100, document.materials[0]), "end"]
+        )
+
+    def test_rejects_unknown_texture_color_space_without_committing_graph_changes(self):
+        material = self.add_pbr_material()
+        graph = self.graph_description.graph_for(material)
+        before = graph.Clone()
+
+        with self.assertRaisesRegex(ValueError, "unknown color space"):
+            self.handle_rs_set_material_pbr(
+                {
+                    "document_name": "user",
+                    "material": {"kind": "material", "name": "RS_Mat"},
+                    "base_color": {"path": "C:/textures/base.exr", "color_space": "unknown"},
+                }
+            )
+
+        self.assertEqual(graph.Clone(), before)
+        self.assertEqual(graph.transactions[-2:], ["begin", "rollback"])
 
 
 if __name__ == "__main__":
