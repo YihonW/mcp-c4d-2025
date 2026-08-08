@@ -3,8 +3,8 @@ import path from "node:path";
 const C4D_2025_PREFERENCE = /^Maxon Cinema 4D 2025_[^\\/]+$/;
 
 function normalizeAbsolute(input: string, label: string): string {
-  if (!path.win32.isAbsolute(input)) {
-    throw new Error(`${label} must be an absolute Windows path`);
+  if (!/^[A-Za-z]:[\\/]/.test(input) || !path.win32.isAbsolute(input)) {
+    throw new Error(`${label} must be a drive-letter absolute Windows path`);
   }
 
   return path.win32.normalize(input);
