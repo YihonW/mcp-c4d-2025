@@ -26,12 +26,17 @@ The Codex command must point to the resulting absolute `dist\index.js` path, not
 
 ## Configure the shared token
 
-Generate a token outside the repository and set it in the current PowerShell process and the current user's environment. The placeholder below is code, not a real token:
+Generate a token outside the repository and set it in the current PowerShell process and the current user's environment. This default form is compatible with Windows PowerShell 5.1; it does not print the generated value:
 
 ```powershell
-$c4dMcpToken = [Convert]::ToHexString(
-  [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-)
+$c4dMcpRng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+  $c4dMcpBytes = New-Object byte[] 32
+  $c4dMcpRng.GetBytes($c4dMcpBytes)
+  $c4dMcpToken = -join ($c4dMcpBytes | ForEach-Object { $_.ToString('x2') })
+} finally {
+  $c4dMcpRng.Dispose()
+}
 $env:C4D_MCP_TOKEN = $c4dMcpToken
 [Environment]::SetEnvironmentVariable("C4D_MCP_TOKEN", $c4dMcpToken, "User")
 ```

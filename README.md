@@ -130,12 +130,21 @@ Even without `exec_python`, many tools mutate state: `call_command`, `set_params
 
 ## Troubleshooting
 
+For plugin repair or version skew, save your work and close Cinema 4D first. From this local checkout, review the exact target before reinstalling:
+
+```powershell
+npm run install:c4d -- --dry-run --preference "C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>"
+npm run install:c4d -- --install --preference "C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>"
+```
+
+Run the second command only after the dry-run source and destination are correct. The installer preserves the previous bridge as a sibling backup; see [backup and rollback](./docs/CODEX_SETUP.md#backup-and-rollback).
+
 | Symptom                                                                     | Likely cause / fix                                                                                                                                                                                                                                     |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Cannot connect to Cinema 4D bridge at 127.0.0.1:18710`                     | C4D isn't running, plugin didn't load, or a firewall is blocking localhost. Check the C4D console for the `listening on …` line and look at `%TEMP%/cinema4d_mcp_bridge.log` (Windows) / `$TMPDIR/cinema4d_mcp_bridge.log` (macOS).                    |
-| Plugin loads but the `listening` line never prints                          | Usually a Python import error in `cinema4d_mcp_bridge.pyp`. Inspect the C4D console; common cause is leftover stale files from an older install — delete the destination folder and re-extract the latest release zip, then restart C4D.               |
+| Plugin loads but the `listening` line never prints                          | Inspect the C4D console for a Python import error, then use the reviewed local dry-run/install repair procedure above. Do not delete the destination or replace it from an unreviewed zip.                                                             |
 | `listening on 127.0.0.1:18710` fails with `OSError: address already in use` | Another process already owns that port. Either quit it, or set both `C4D_MCP_PORT` (C4D side) **and** the same value on the MCP server launch command.                                                                                                 |
-| `unknown command: <tool>`                                                   | Bridge plugin is older than the npm package. Download the matching release zip, re-extract it into your plugins folder, and restart C4D.                                                                                                               |
+| `unknown command: <tool>`                                                   | The bridge and Node checkout are version-skewed. Save/close Cinema 4D and use the reviewed local dry-run/install repair procedure above so the installer creates a rollback backup.                                                                    |
 | `object name '…' is ambiguous`                                              | Two or more scene objects share the name. Use a path-based handle: `{kind:"object", path:"/A/B/C"}`. Candidate paths are included in the error.                                                                                                        |
 | `exec_python is disabled on this C4D instance`                              | `exec_python` is off by default. Set `C4D_MCP_ENABLE_EXEC_PYTHON=1` in **both** the Cinema 4D launch environment **and** the MCP server `env` map, then restart C4D. See [Security](#security).                                                        |
 | `requires C4D_MCP_ENABLE_PYTHON_OPS=1 …`                                    | You tried to create or edit a Python-bearing entity (Python tag, Python generator, MoGraph Python effector, Python field, Xpresso Python operator). Off by default. Set `C4D_MCP_ENABLE_PYTHON_OPS=1` in the Cinema 4D launch environment and restart. |
