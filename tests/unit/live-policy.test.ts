@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { requireLiveBridge } from "../e2e/harness.js";
+import { MCPTestClient, probeBridge, requireLiveBridge } from "../e2e/harness.js";
 
 const validCapabilities = {
   c4d_version: 2025302,
@@ -73,5 +73,36 @@ describe("requireLiveBridge", () => {
         execPython: false,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("probeBridge live opt-in", () => {
+  test("does not start an MCP client when live E2E was not explicitly enabled", async () => {
+    const originalConnect = MCPTestClient.prototype.connect;
+    const priorAllow = process.env.C4D_MCP_ALLOW_LIVE_E2E;
+    const priorStrict = process.env.C4D_MCP_REQUIRE_LIVE;
+    let connectionAttempts = 0;
+
+    MCPTestClient.prototype.connect = async () => {
+      connectionAttempts += 1;
+    };
+    delete process.env.C4D_MCP_ALLOW_LIVE_E2E;
+    delete process.env.C4D_MCP_REQUIRE_LIVE;
+
+    try {
+      const result = await probeBridge("unit-offline-policy");
+
+      expect(result).toMatchObject({
+        ready: false,
+        reason: expect.stringMatching(/explicit live opt-in/i),
+      });
+      expect(connectionAttempts).toBe(0);
+    } finally {
+      MCPTestClient.prototype.connect = originalConnect;
+      if (priorAllow === undefined) delete process.env.C4D_MCP_ALLOW_LIVE_E2E;
+      else process.env.C4D_MCP_ALLOW_LIVE_E2E = priorAllow;
+      if (priorStrict === undefined) delete process.env.C4D_MCP_REQUIRE_LIVE;
+      else process.env.C4D_MCP_REQUIRE_LIVE = priorStrict;
+    }
   });
 });

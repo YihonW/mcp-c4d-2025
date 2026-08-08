@@ -222,6 +222,13 @@ export async function probeBridge(suite: string): Promise<{
   client?: MCPTestClient;
 }> {
   const strictLive = process.env.C4D_MCP_REQUIRE_LIVE === "1";
+  const allowLive = strictLive || process.env.C4D_MCP_ALLOW_LIVE_E2E === "1";
+  if (!allowLive) {
+    const reason =
+      "explicit live opt-in required (C4D_MCP_ALLOW_LIVE_E2E=1 or C4D_MCP_REQUIRE_LIVE=1)";
+    printSkipBanner(suite, reason, "Live Cinema 4D E2E is disabled by default");
+    return { ready: false, reason };
+  }
   const client = new MCPTestClient();
   try {
     await client.connect();
@@ -259,11 +266,10 @@ export function printSkipBanner(
       ` reason : ${reason}`,
       ` target : ${host}:${port}`,
       " ",
-      " To run these tests:",
-      "   1. Launch Cinema 4D.",
-      "   2. Install the bridge plugin (symlink `plugin/cinema4d_mcp_bridge/` into the plugins folder, then restart C4D).",
-      "   3. Confirm C4D console prints `[cinema4d_mcp_bridge] listening on ...`.",
-      "   4. Re-run `npm test`.",
+      " To run the guarded foundation live test:",
+      "   npm run test:live:2025",
+      " ",
+      " Other E2E suites require C4D_MCP_ALLOW_LIVE_E2E=1 explicitly.",
       divider,
     ].join("\n"),
   );
