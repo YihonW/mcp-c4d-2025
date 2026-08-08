@@ -3,12 +3,12 @@
 [![CI](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml/badge.svg)](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
-[![Cinema 4D](https://img.shields.io/badge/Cinema%204D-2025.3.2%20target-yellow)](./docs/COMPATIBILITY.md)
+[![Cinema 4D](https://img.shields.io/badge/Cinema%204D-2025.3.2%20foundation%20verified-brightgreen)](./docs/COMPATIBILITY.md)
 
 Let an LLM drive Cinema 4D. **mcp-c4d-2025** is a foundation fork of `mcp-cinema4d` that targets Cinema 4D 2025.3.2. It connects an MCP stdio client to the Python bridge running inside Cinema 4D so the model can inspect and edit a scene through typed tools.
 
 > [!IMPORTANT]
-> **Cinema 4D 2025.3.2 is the target, not a verified compatibility claim.** This checkout is not verified on 2025 until the strict `npm run test:live:2025` suite completes successfully without skips. The existing tool catalog is inherited and unverified on 2025 unless explicitly listed as live-verified in [Compatibility](./docs/COMPATIBILITY.md).
+> **The Cinema 4D 2025.3.2 foundation path is live-verified on Windows x64.** On 2026-08-08, the strict `npm run test:live:2025` suite completed with one passing test and no skips. This verifies only the documented connection/edit/undo/preview/save-copy path; the rest of the inherited tool catalog remains unverified unless explicitly listed in [Compatibility](./docs/COMPATIBILITY.md).
 
 **Good for:**
 

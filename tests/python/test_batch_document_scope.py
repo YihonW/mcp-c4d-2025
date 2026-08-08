@@ -30,6 +30,24 @@ class _FakeDocument:
         self.undo_events.append("end")
 
 
+class _FakeDocumentProxy:
+    """Fresh Python proxy for one stable underlying C4D document."""
+
+    def __init__(self, document: _FakeDocument):
+        self.document = document
+
+    def __getattr__(self, name):
+        return getattr(self.document, name)
+
+    def __eq__(self, other):
+        return isinstance(other, _FakeDocumentProxy) and self.document is other.document
+
+    def GetNext(self):
+        if self.document.next is None:
+            return None
+        return _FakeDocumentProxy(self.document.next)
+
+
 class BatchDocumentScopeTest(unittest.TestCase):
     def setUp(self):
         self.user_doc = _FakeDocument("user-scene")
@@ -116,6 +134,37 @@ class BatchDocumentScopeTest(unittest.TestCase):
         self.assertIs(self.active_doc, self.user_doc)
         self.assertEqual(self.active_changes, [self.temp_doc.name, self.user_doc.name])
         self.assertEqual(self.temp_doc.undo_events, ["start", "end"])
+
+    def test_document_scope_accepts_fresh_equal_proxies_for_the_same_document(self):
+        documents = self.fake_modules["c4d.documents"]
+        documents.GetActiveDocument = lambda: _FakeDocumentProxy(self.active_doc)
+        documents.GetFirstDocument = lambda: _FakeDocumentProxy(self.user_doc)
+
+        def set_active_document(proxy):
+            self.active_doc = proxy.document
+            self.active_changes.append(proxy.name)
+
+        documents.SetActiveDocument = set_active_document
+
+        def write_marker(params):
+            active = documents.GetActiveDocument()
+            active.writes.append(params["marker"])
+            return {"document": active.name}
+
+        self.handlers.HANDLERS = {"write_marker": write_marker}
+
+        result = self.script.handle_batch(
+            {
+                "document_name": self.temp_doc.name,
+                "ops": [{"op": "write_marker", "args": {"marker": "proxy-safe"}}],
+            }
+        )
+
+        self.assertEqual(result["count"], 1)
+        self.assertNotIn("error", result["results"][0])
+        self.assertEqual(self.user_doc.writes, [])
+        self.assertEqual(self.temp_doc.writes, ["proxy-safe"])
+        self.assertIs(self.active_doc, self.user_doc)
 
     def test_document_scoped_batch_restores_active_document_after_handler_error(self):
         def switch_then_fail(_params):

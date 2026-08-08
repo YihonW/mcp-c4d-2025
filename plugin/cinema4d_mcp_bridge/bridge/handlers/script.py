@@ -262,7 +262,7 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
     def is_open_document(candidate) -> bool:
         current = documents.GetFirstDocument()
         while current is not None:
-            if current is candidate:
+            if current == candidate:
                 return True
             current = current.GetNext()
         return False
@@ -272,7 +272,7 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
             documents.SetActiveDocument(doc)
 
     try:
-        if scoped and documents.GetActiveDocument() is not doc:
+        if scoped and documents.GetActiveDocument() != doc:
             documents.SetActiveDocument(doc)
         # Default behavior remains one outer undo group. Inner handlers may
         # create nested groups, which C4D coalesces into this outer group.
@@ -307,7 +307,7 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 if stop:
                     break
                 continue
-            if scoped and documents.GetActiveDocument() is not doc:
+            if scoped and documents.GetActiveDocument() != doc:
                 restore_scoped_target()
                 results.append(
                     {
@@ -321,7 +321,7 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 r = handler(args)
             except Exception as exc:
                 error = f"{type(exc).__name__}: {exc}"
-                if scoped and documents.GetActiveDocument() is not doc:
+                if scoped and documents.GetActiveDocument() != doc:
                     restore_scoped_target()
                     error += "; handler changed the active document"
                     results.append({"index": i, "op": name, "error": error})
@@ -330,7 +330,7 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 if stop:
                     break
             else:
-                if scoped and documents.GetActiveDocument() is not doc:
+                if scoped and documents.GetActiveDocument() != doc:
                     restore_scoped_target()
                     results.append(
                         {
@@ -350,7 +350,7 @@ def handle_batch(params: dict[str, Any]) -> dict[str, Any]:
                 scoped
                 and previous_doc is not None
                 and is_open_document(previous_doc)
-                and documents.GetActiveDocument() is not previous_doc
+                and documents.GetActiveDocument() != previous_doc
             ):
                 documents.SetActiveDocument(previous_doc)
             if scoped:

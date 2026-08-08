@@ -4,14 +4,14 @@ This fork targets Cinema 4D 2025.3.2. A target is not a support claim: compatibi
 
 ## Current status
 
-| Runtime            | Status                                               | Evidence boundary                                                                                  |
-| ------------------ | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Cinema 4D 2025.3.2 | **Target; foundation live verification not yet run** | Build, unit tests, generated docs, and offline checks do not prove the live bridge path.           |
-| Cinema 4D 2024.x   | **Inherited / unverified**                           | No strict live suite is defined for this release.                                                  |
-| Cinema 4D 2026.x   | **Inherited / unverified in this fork**              | Upstream observations may exist, but they are not current live evidence for this fork or for 2025. |
-| Other releases     | **Unsupported / unverified**                         | No compatibility evidence is recorded.                                                             |
+| Runtime            | Status                                                   | Evidence boundary                                                                                  |
+| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Cinema 4D 2025.3.2 | **Foundation live-verified on Windows x64 (2026-08-08)** | Strict suite: one passing foundation test, zero skips, exit `0`; exact boundary is listed below.   |
+| Cinema 4D 2024.x   | **Inherited / unverified**                               | No strict live suite is defined for this release.                                                  |
+| Cinema 4D 2026.x   | **Inherited / unverified in this fork**                  | Upstream observations may exist, but they are not current live evidence for this fork or for 2025. |
+| Other releases     | **Unsupported / unverified**                             | No compatibility evidence is recorded.                                                             |
 
-At the current status, **no tool group is claimed as live-verified on Cinema 4D 2025.3.2**.
+Only the exact foundation behaviors below are claimed as live-verified. No complete tool group and no blanket claim for all 65 tools is implied.
 
 ## Evidence labels
 
@@ -23,16 +23,18 @@ At the current status, **no tool group is claimed as live-verified on Cinema 4D 
 
 The strict suite currently covers one end-to-end path:
 
-| Area                           | Tools/behavior exercised                                                       | Status before a successful live run |
-| ------------------------------ | ------------------------------------------------------------------------------ | ----------------------------------- |
-| Connection                     | `ping` through the Codex-style STDIO server and TCP bridge                     | Pending / unverified                |
-| Runtime and security discovery | `get_capabilities`; requires a reported Cinema 4D 2025 release                 | Pending / unverified                |
-| Isolated document              | `new_document` with a unique name and `make_active: false`                     | Pending / unverified                |
-| Create, edit, read             | `batch`, `create_entity`, `sample_transform`, `set_transform`                  | Pending / unverified                |
-| Undo                           | `undo`, followed by a transform read that must match the pre-edit value        | Pending / unverified                |
-| Preview                        | `preview_render` to a 64×64 PNG in a temporary directory                       | Pending / unverified                |
-| Save-copy and state            | `get_document_state`, `save_document` with `copy: true`, then state comparison | Pending / unverified                |
-| Cleanup                        | Close the uniquely named temporary document and remove temporary files         | Pending / unverified                |
+| Area                           | Tools/behavior exercised                                                       | Status                   |
+| ------------------------------ | ------------------------------------------------------------------------------ | ------------------------ |
+| Connection                     | `ping` through the Codex-style STDIO server and TCP bridge                     | Foundation live-verified |
+| Runtime and security discovery | `get_capabilities`; requires a reported Cinema 4D 2025 release                 | Foundation live-verified |
+| Isolated document              | `new_document` with a unique name and `make_active: false`                     | Foundation live-verified |
+| Create, edit, read             | `batch`, `create_entity`, `sample_transform`, `set_transform`                  | Foundation live-verified |
+| Undo                           | `undo`, followed by a transform read that must match the pre-edit value        | Foundation live-verified |
+| Preview                        | `preview_render` to a 64×64 PNG in a temporary directory                       | Foundation live-verified |
+| Save-copy and state            | `get_document_state`, `save_document` with `copy: true`, then state comparison | Foundation live-verified |
+| Cleanup                        | Close the uniquely named temporary document and remove temporary files         | Foundation live-verified |
+
+Recorded run: Windows x64, Cinema 4D raw version `2025302` (2025.3.2), Node.js 24.18.0, bridge 0.3.1, loopback transport, token authentication disabled, and `exec_python` disabled. `npm run test:live:2025` exited `0` with one passing foundation test and zero skipped tests on 2026-08-08.
 
 Even after this suite passes, the claim is limited to the exact Cinema 4D build, operating system, bridge version, security posture, and foundation path tested. It does **not** promote all 65 tools or any complete tool group.
 

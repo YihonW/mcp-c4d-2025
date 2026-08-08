@@ -3,7 +3,7 @@
 This guide runs the local checkout as a Codex STDIO MCP server and installs its Python bridge into a Cinema 4D 2025 preference directory.
 
 > [!IMPORTANT]
-> This fork targets Cinema 4D 2025.3.2, but the target is **not live-verified** until `npm run test:live:2025` exits successfully without skips. Do not infer compatibility from a successful build, ordinary `npm test`, plugin installation, or the presence of a tool in `docs/TOOLS.md`.
+> The documented foundation path is live-verified on Cinema 4D 2025.3.2 for Windows x64. The successful 2026-08-08 run covered connection, capabilities, isolated create/edit/read, undo, preview, save-copy, state preservation, and cleanup. Rerun `npm run test:live:2025` after code, plugin, Cinema 4D, or security-environment changes; do not infer compatibility for the remaining inherited tools from this bounded result.
 
 The Codex forms below follow the [official OpenAI MCP configuration](https://developers.openai.com/codex/mcp): a local STDIO command configured in Settings, through `codex mcp add`, or in `config.toml`.
 

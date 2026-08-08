@@ -538,7 +538,9 @@ def _resolve_gv_node_handle(h: dict[str, Any]):
 
 def _json_safe(value: Any, _depth: int = 0) -> Any:
     """Best-effort conversion of arbitrary Python values into JSON-friendly form."""
-    if _depth > 6:
+    # A batch response adds several protocol/result wrappers before reaching
+    # legitimate handler data (transform vectors naturally land at depth 8).
+    if _depth > 16:
         return repr(value)
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
