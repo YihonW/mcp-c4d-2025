@@ -32,6 +32,11 @@ class FakeAov:
         return FakeContainer(self.values)
 
 
+class RejectingAov(FakeAov):
+    def SetParameter(self, parameter, value):
+        return False
+
+
 class FakeContainer:
     def __init__(self, values):
         self.values = values
@@ -98,10 +103,13 @@ class RedshiftAovsTest(unittest.TestCase):
         self.set_calls = []
         self.fail_first_set = False
         self.return_false_first_set = False
+        self.video_post_calls = []
 
-        self.redshift.FindAddVideoPost = lambda render_data, _renderer: self.video_posts[
-            render_data
-        ]
+        def find_video_post(render_data, _renderer):
+            self.video_post_calls.append(render_data)
+            return self.video_posts[render_data]
+
+        self.redshift.FindAddVideoPost = find_video_post
         self.redshift.RendererGetAOVs = lambda _video_post: list(self.aovs)
 
         def set_aovs(_video_post, aovs):
@@ -262,6 +270,15 @@ class RedshiftAovsTest(unittest.TestCase):
         self.assertTrue(original.GetParameter(self.c4d.REDSHIFT_AOV_ENABLED))
         self.assertEqual(original.GetParameter(9001), 1.25)
 
+    def test_upsert_rejects_failed_parameter_write_before_list_mutation(self):
+        self.redshift.RSAOV = RejectingAov
+        aovs = self._load()
+
+        with self.assertRaisesRegex(RuntimeError, "failed to set AOV parameter"):
+            aovs.handle_rs_upsert_aov({"type": "beauty", "name": "Beauty"})
+
+        self.assertEqual(self.set_calls, [])
+
     def test_upsert_rejects_ambiguous_duplicate_matches_before_mutation(self):
         self.aovs = [self._aov(), self._aov()]
         aovs = self._load()
@@ -340,6 +357,107 @@ class RedshiftAovsTest(unittest.TestCase):
 
         self.assertEqual(len(self.set_calls), 2)
         self.assertIs(self.set_calls[1][0], original)
+
+    def test_remove_rejects_out_of_range_and_stale_index_before_mutation(self):
+        self.aovs = [self._aov()]
+        aovs = self._load()
+
+        with self.assertRaisesRegex(ValueError, "out of range"):
+            aovs.handle_rs_remove_aov(
+                {"index": 2, "expected_name": "Beauty", "expected_type": "beauty"}
+            )
+        with self.assertRaisesRegex(ValueError, "stale AOV index"):
+            aovs.handle_rs_remove_aov(
+                {"index": 0, "expected_name": "Old Beauty", "expected_type": "beauty"}
+            )
+        with self.assertRaisesRegex(ValueError, "stale AOV index"):
+            aovs.handle_rs_remove_aov(
+                {"index": 0, "expected_name": "Beauty", "expected_type": "depth"}
+            )
+
+        self.assertEqual(self.set_calls, [])
+
+    def test_remove_uses_one_fresh_snapshot_and_returns_the_removed_record(self):
+        beauty = self._aov()
+        depth = self._aov(type_value=12, name="Depth")
+        self.aovs = [beauty, depth]
+        aovs = self._load()
+
+        result = aovs.handle_rs_remove_aov(
+            {"index": 0, "expected_name": "Beauty", "expected_type": "beauty"}
+        )
+
+        self.assertEqual(result["removed"]["name"], "Beauty")
+        self.assertEqual(result["removed"]["type"], 10)
+        self.assertEqual(result["remaining_count"], 1)
+        self.assertEqual(result["rollback"], "not_needed")
+        self.assertEqual(self.set_calls, [[depth]])
+
+    def test_clear_requires_document_and_exact_force_before_video_post_access(self):
+        aovs = self._load()
+
+        with self.assertRaisesRegex(ValueError, "document_name"):
+            aovs.handle_rs_clear_aovs({"force": True})
+        with self.assertRaisesRegex(ValueError, "force must be true"):
+            aovs.handle_rs_clear_aovs({"document_name": "main", "force": False})
+
+        self.assertEqual(self.video_post_calls, [])
+        self.assertEqual(self.set_calls, [])
+
+    def test_clear_removes_all_aovs_and_returns_pre_mutation_records(self):
+        self.aovs = [self._aov(), self._aov(type_value=12, name="Depth")]
+        aovs = self._load()
+
+        result = aovs.handle_rs_clear_aovs({"document_name": "main", "force": True})
+
+        self.assertEqual([record["name"] for record in result["removed"]], ["Beauty", "Depth"])
+        self.assertEqual(result["remaining_count"], 0)
+        self.assertEqual(result["rollback"], "not_needed")
+        self.assertEqual(self.set_calls, [[]])
+
+    def test_clear_failure_restores_independent_clones_and_reports_succeeded(self):
+        original = self._aov()
+        self.aovs = [original]
+        self.fail_first_set = True
+        aovs = self._load()
+
+        with self.assertRaisesRegex(RuntimeError, "rollback=succeeded"):
+            aovs.handle_rs_clear_aovs({"document_name": "main", "force": True})
+
+        self.assertEqual(len(self.set_calls), 2)
+        self.assertIsNot(self.set_calls[1][0], original)
+
+    def test_clear_clone_less_failure_reports_partial_rollback(self):
+        original = self._aov()
+        original.GetClone = None
+        self.aovs = [original]
+        self.fail_first_set = True
+        aovs = self._load()
+
+        with self.assertRaisesRegex(RuntimeError, "rollback=partial"):
+            aovs.handle_rs_clear_aovs({"document_name": "main", "force": True})
+
+        self.assertEqual(len(self.set_calls), 2)
+        self.assertIsNot(self.set_calls[1][0], original)
+
+    def test_remove_restores_the_previous_active_document(self):
+        target = FakeAovDocument("target", FakeRenderData("Target"))
+        self.document.next = target
+        self.document_state.items = [self.document, target]
+        self.video_posts[target.render_data] = object()
+        self.aovs = [self._aov()]
+        aovs = self._load()
+
+        aovs.handle_rs_remove_aov(
+            {
+                "document_name": "target",
+                "index": 0,
+                "expected_name": "Beauty",
+                "expected_type": "beauty",
+            }
+        )
+
+        self.assertIs(self.document_state.active, self.document)
 
 
 if __name__ == "__main__":

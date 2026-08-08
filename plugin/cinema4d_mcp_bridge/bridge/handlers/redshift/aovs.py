@@ -117,18 +117,20 @@ def _resolve_render_data(document, name: object):
     return matches[0]
 
 
-def _normalize_input(params: dict[str, Any]) -> tuple[int, str, dict[str, Any]]:
-    raw_type = params.get("type")
+def _normalize_type(raw_type: object) -> int:
     aliases = aov_type_aliases()
     if isinstance(raw_type, str):
         alias = raw_type.strip().lower()
         if alias not in aliases:
             raise ValueError(f"unknown AOV type alias: {raw_type!r}")
-        type_value = aliases[alias]
+        return aliases[alias]
     elif isinstance(raw_type, int) and not isinstance(raw_type, bool):
-        type_value = raw_type
-    else:
-        raise ValueError("type must be a supported alias or integer")
+        return raw_type
+    raise ValueError("type must be a supported alias or integer")
+
+
+def _normalize_input(params: dict[str, Any]) -> tuple[int, str, dict[str, Any]]:
+    type_value = _normalize_type(params.get("type"))
 
     name = params.get("name")
     if not isinstance(name, str) or not name.strip():
@@ -171,17 +173,23 @@ def _normalize_input(params: dict[str, Any]) -> tuple[int, str, dict[str, Any]]:
 def _set_parameter(aov, parameter, value) -> None:
     setter = getattr(aov, "SetParameter", None)
     if callable(setter):
-        setter(parameter, value)
+        if setter(parameter, value) is False:
+            raise RuntimeError(f"failed to set AOV parameter {parameter}")
         return
     aov[parameter] = value
 
 
-def _clone_aov(aov, redshift):
-    clone = getattr(aov, "GetClone", None)
-    if callable(clone):
-        copied = clone()
-        if copied is not None and copied is not aov:
-            return copied
+def _exact_clone(aov):
+    for method_name in ("GetClone", "Clone"):
+        clone = getattr(aov, method_name, None)
+        if callable(clone):
+            copied = clone()
+            if copied is not None and copied is not aov:
+                return copied
+    return None
+
+
+def _reconstruct_aov(aov, redshift):
     copied = redshift.RSAOV()
     symbols = _runtime_symbols()
     for parameter in symbols.values():
@@ -189,6 +197,26 @@ def _clone_aov(aov, redshift):
     for parameter, value in _safe_aov_params(aov).items():
         _set_parameter(copied, int(parameter), value)
     return copied
+
+
+def _clone_aov(aov, redshift):
+    copied = _exact_clone(aov)
+    return copied if copied is not None else _reconstruct_aov(aov, redshift)
+
+
+def _rollback_snapshot(original, redshift) -> tuple[list[object] | None, bool]:
+    snapshots: list[object] = []
+    exact = True
+    try:
+        for aov in original:
+            copied = _exact_clone(aov)
+            if copied is None:
+                copied = _reconstruct_aov(aov, redshift)
+                exact = False
+            snapshots.append(copied)
+    except Exception:
+        return None, False
+    return snapshots, exact
 
 
 def _new_aov(redshift, type_value: int, name: str):
@@ -236,6 +264,23 @@ def _set_with_rollback(redshift, video_post, original, proposed) -> str:
             except Exception:
                 rollback = "partial"
         raise RuntimeError(f"failed to set Redshift AOVs; rollback={rollback}: {exc}") from exc
+
+
+def _clear_with_rollback(redshift, video_post, rollback_snapshot, rollback_exact) -> str:
+    try:
+        if redshift.RendererSetAOVs(video_post, []) is False:
+            raise RuntimeError("RendererSetAOVs returned false")
+        return "not_needed"
+    except Exception as exc:
+        if rollback_snapshot is None:
+            rollback = "unavailable"
+        else:
+            try:
+                restored = redshift.RendererSetAOVs(video_post, rollback_snapshot)
+                rollback = "succeeded" if restored is not False and rollback_exact else "partial"
+            except Exception:
+                rollback = "partial"
+        raise RuntimeError(f"failed to clear Redshift AOVs; rollback={rollback}: {exc}") from exc
 
 
 def handle_rs_list_aovs(params: dict[str, Any]) -> dict[str, Any]:
@@ -289,5 +334,66 @@ def handle_rs_upsert_aov(params: dict[str, Any]) -> dict[str, Any]:
             "render_data": {"kind": "render_data", "name": render_data.GetName()},
             "aov": _aov_record(target, index),
             "created": created,
+            "rollback": rollback,
+        }
+
+
+def handle_rs_remove_aov(params: dict[str, Any]) -> dict[str, Any]:
+    """Remove one fresh indexed AOV only when its expected identity still matches."""
+    index = params.get("index")
+    if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+        raise ValueError("index must be a non-negative integer")
+    expected_name = params.get("expected_name")
+    if not isinstance(expected_name, str) or not expected_name.strip():
+        raise ValueError("expected_name must be a non-empty string")
+    expected_type = _normalize_type(params.get("expected_type"))
+
+    require_redshift("aov_api")
+    redshift, _ = load_redshift()
+    assert redshift is not None
+    _runtime_symbols()
+    with document_scope(params.get("document_name"), required=True) as document:
+        render_data = _resolve_render_data(document, params.get("render_data_name"))
+        video_post = _video_post(redshift, render_data)
+        original = list(redshift.RendererGetAOVs(video_post))
+        if index >= len(original):
+            raise ValueError(f"AOV index out of range: {index}")
+        removed = _aov_record(original[index], index)
+        if removed["name"] != expected_name.strip() or removed["type"] != expected_type:
+            raise ValueError(f"stale AOV index {index}: expected name/type no longer match")
+        proposed = list(original)
+        del proposed[index]
+        rollback = _set_with_rollback(redshift, video_post, original, proposed)
+        return {
+            "render_data": {"kind": "render_data", "name": render_data.GetName()},
+            "removed": removed,
+            "remaining_count": len(proposed),
+            "rollback": rollback,
+        }
+
+
+def handle_rs_clear_aovs(params: dict[str, Any]) -> dict[str, Any]:
+    """Clear every AOV only for a named document and an exact force guard."""
+    document_name = params.get("document_name")
+    if not isinstance(document_name, str) or not document_name.strip():
+        raise ValueError("document_name is required to clear all AOVs")
+    if params.get("force") is not True:
+        raise ValueError("force must be true to clear all AOVs")
+
+    require_redshift("aov_api")
+    redshift, _ = load_redshift()
+    assert redshift is not None
+    _runtime_symbols()
+    with document_scope(document_name, required=True) as document:
+        render_data = _resolve_render_data(document, params.get("render_data_name"))
+        video_post = _video_post(redshift, render_data)
+        original = list(redshift.RendererGetAOVs(video_post))
+        removed = [_aov_record(aov, index) for index, aov in enumerate(original)]
+        rollback_snapshot, rollback_exact = _rollback_snapshot(original, redshift)
+        rollback = _clear_with_rollback(redshift, video_post, rollback_snapshot, rollback_exact)
+        return {
+            "render_data": {"kind": "render_data", "name": render_data.GetName()},
+            "removed": removed,
+            "remaining_count": 0,
             "rollback": rollback,
         }

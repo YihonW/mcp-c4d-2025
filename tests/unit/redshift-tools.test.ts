@@ -5,9 +5,11 @@ import type { C4DClient } from "../../src/c4d-client.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import { rsCreateMaterialTool } from "../../src/tools/rs-create-material.js";
 import { rsCreateLightTool } from "../../src/tools/rs-create-light.js";
+import { rsClearAovsInput, rsClearAovsTool } from "../../src/tools/rs-clear-aovs.js";
 import { rsGetCapabilitiesTool } from "../../src/tools/rs-get-capabilities.js";
 import { rsSetCameraTool } from "../../src/tools/rs-set-camera.js";
 import { rsListAovsTool } from "../../src/tools/rs-list-aovs.js";
+import { rsRemoveAovInput, rsRemoveAovTool } from "../../src/tools/rs-remove-aov.js";
 import {
   rsSetMaterialPbrInput,
   rsSetMaterialPbrTool,
@@ -255,6 +257,38 @@ describe("Redshift AOV tools", () => {
     expect(rsUpsertAovTool.group).toBe("redshift");
     expect(client.requests).toEqual([
       { command: "rs_upsert_aov", params: args, timeoutMs: 30_000 },
+    ]);
+  });
+
+  test("remove validates stale-index guards and forwards the exact request", async () => {
+    const client = new FakeC4DClient();
+    const args = { index: 2, expected_name: "Beauty", expected_type: "beauty" };
+
+    expect(rsRemoveAovInput.safeParse({ ...args, index: -1 }).success).toBe(false);
+    expect(rsRemoveAovInput.safeParse({ ...args, expected_name: " " }).success).toBe(false);
+    await rsRemoveAovTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsRemoveAovTool);
+    expect(rsRemoveAovTool.group).toBe("redshift");
+    expect(client.requests).toEqual([
+      { command: "rs_remove_aov", params: args, timeoutMs: 30_000 },
+    ]);
+  });
+
+  test("clear requires an exact destructive guard and forwards the request", async () => {
+    const client = new FakeC4DClient();
+    const args = { document_name: "scene", force: true as const };
+
+    expect(rsClearAovsInput.safeParse({ document_name: "scene", force: false }).success).toBe(
+      false,
+    );
+    expect(rsClearAovsInput.safeParse({ force: true }).success).toBe(false);
+    await rsClearAovsTool.handler(args, client as unknown as C4DClient);
+
+    expect(ALL_TOOLS).toContain(rsClearAovsTool);
+    expect(rsClearAovsTool.group).toBe("redshift");
+    expect(client.requests).toEqual([
+      { command: "rs_clear_aovs", params: args, timeoutMs: 30_000 },
     ]);
   });
 });
