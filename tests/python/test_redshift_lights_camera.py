@@ -32,6 +32,7 @@ class FakeObject:
         self.next = None
         self.up = None
         self.params = {}
+        self.set_calls = []
         self.position = None
         self.rotation = None
         self.raise_on_set = False
@@ -63,7 +64,11 @@ class FakeObject:
     def __setitem__(self, key, value):
         if self.raise_on_set:
             raise RuntimeError("injected parameter failure")
+        self.set_calls.append((key, value))
         self.params[key] = value
+
+    def __getitem__(self, key):
+        return self.params[key]
 
 
 class FakeObjectDocument:
@@ -72,6 +77,7 @@ class FakeObjectDocument:
         self.objects = []
         self.inserted_objects = []
         self.undo_events = []
+        self.add_undo_returns_false = False
 
     def _link(self):
         for current, following in zip(self.objects, self.objects[1:], strict=False):
@@ -93,6 +99,8 @@ class FakeObjectDocument:
 
     def AddUndo(self, undo_type, obj):
         self.undo_events.append(("add", undo_type, obj))
+        if self.add_undo_returns_false:
+            return False
 
     def EndUndo(self):
         self.undo_events.append("end")
@@ -315,11 +323,26 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         self.assertEqual(self.target.inserted_objects, [])
 
         light = self.add_object("RS_Update", self.c4d.Orslight)
+        light.params[self.c4d.REDSHIFT_LIGHT_TYPE] = self.c4d.REDSHIFT_LIGHT_TYPE_AREA
+        with self.assertRaisesRegex(ValueError, "type.*does not match"):
+            self.handle_rs_create_light(
+                {
+                    "document_name": "target",
+                    "name": "RS_Update",
+                    "type": "spot",
+                    "update_if_exists": True,
+                    "intensity": 3,
+                }
+            )
+        self.assertEqual(light.GetType(), self.c4d.Orslight)
+        self.assertEqual(light.set_calls, [])
+        self.assertEqual(self.target.undo_events, [])
+
         result = self.handle_rs_create_light(
             {
                 "document_name": "target",
                 "name": "RS_Update",
-                "type": "spot",
+                "type": "area",
                 "update_if_exists": True,
                 "intensity": 3,
             }
@@ -328,8 +351,9 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         self.assertIs(light, self.target.objects[-1])
         self.assertEqual(light.GetType(), self.c4d.Orslight)
         self.assertEqual(
-            light.params[self.c4d.REDSHIFT_LIGHT_TYPE], self.c4d.REDSHIFT_LIGHT_TYPE_SPOT
+            light.params[self.c4d.REDSHIFT_LIGHT_TYPE], self.c4d.REDSHIFT_LIGHT_TYPE_AREA
         )
+        self.assertEqual(light.set_calls, [(self.c4d.REDSHIFT_LIGHT_INTENSITY, 3.0)])
         self.assertEqual(
             self.target.undo_events[-3:], ["start", ("add", self.c4d.UNDOTYPE_CHANGE, light), "end"]
         )
@@ -346,8 +370,49 @@ class RedshiftLightsCameraTest(unittest.TestCase):
                 }
             )
 
+    def test_add_undo_false_closes_the_group_and_marks_light_and_camera_unsupported(self):
+        self.target.add_undo_returns_false = True
+
+        light_result = self.handle_rs_create_light(
+            {"document_name": "target", "name": "RS_Area", "type": "area"}
+        )
+        light = self.target.objects[0]
+        self.assertFalse(light_result["undo_supported"])
+        self.assertEqual(
+            self.target.undo_events,
+            [
+                "start",
+                ("insert", light),
+                ("add", self.c4d.UNDOTYPE_NEW, light),
+                "end",
+            ],
+        )
+
+        self.target.undo_events.clear()
+        camera_result = self.handle_rs_set_camera({"document_name": "target", "name": "RS_Camera"})
+        camera = self.target.objects[-1]
+        self.assertFalse(camera_result["undo_supported"])
+        self.assertEqual(
+            self.target.undo_events,
+            [
+                "start",
+                ("insert", camera),
+                ("add", self.c4d.UNDOTYPE_NEW, camera),
+                "end",
+            ],
+        )
+
+        self.target.undo_events.clear()
+        self.target_document.StartUndo = lambda: False
+        no_start_result = self.handle_rs_create_light(
+            {"document_name": "target", "name": "RS_NoUndo", "type": "area"}
+        )
+        self.assertFalse(no_start_result["undo_supported"])
+        self.assertEqual(self.target.undo_events, [("insert", self.target.objects[-1])])
+
     def test_light_ends_undo_after_write_error(self):
         light = self.add_object("RS_Error", self.c4d.Orslight)
+        light.params[self.c4d.REDSHIFT_LIGHT_TYPE] = self.c4d.REDSHIFT_LIGHT_TYPE_AREA
         light.raise_on_set = True
 
         with self.assertRaisesRegex(RuntimeError, "injected parameter failure"):
@@ -357,6 +422,7 @@ class RedshiftLightsCameraTest(unittest.TestCase):
                     "name": "RS_Error",
                     "type": "area",
                     "update_if_exists": True,
+                    "intensity": 3,
                 }
             )
 

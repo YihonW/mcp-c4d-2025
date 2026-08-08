@@ -138,7 +138,9 @@ def _start_undo(document, undo_type, obj, *, insert=None) -> tuple[bool, object 
     try:
         if insert is not None:
             insert()
-        add(undo_type, obj)
+        if add(undo_type, obj) is False:
+            end()
+            return False, None
     except Exception:
         try:
             end()
@@ -154,8 +156,11 @@ def _apply_light(
     parameter_ids: dict[str, object],
     texture_descid,
     values: dict[str, object],
+    *,
+    set_type: bool,
 ) -> list[str]:
-    obj[type_parameter_id] = type_value
+    if set_type:
+        obj[type_parameter_id] = type_value
     applied: list[str] = []
     if "position" in values:
         obj.SetRelPos(c4d.Vector(*values["position"]))
@@ -199,6 +204,12 @@ def handle_rs_create_light(params: dict[str, object]) -> dict[str, object]:
             obj = matches[0]
             if obj.GetType() != light_object_type:
                 raise ValueError(f"object is not a Redshift light: {name!r}")
+            try:
+                existing_type_value = obj[type_parameter_id]
+            except Exception as exc:
+                raise RuntimeError(f"unable to read Redshift light type: {name!r}") from exc
+            if existing_type_value != type_value:
+                raise ValueError(f"Redshift light type does not match requested type: {name!r}")
 
         undo_type = getattr(c4d, "UNDOTYPE_NEW" if created else "UNDOTYPE_CHANGE", None)
         undo_supported, end_undo = _start_undo(
@@ -215,6 +226,7 @@ def handle_rs_create_light(params: dict[str, object]) -> dict[str, object]:
                 parameter_ids,
                 texture_descid,
                 values,
+                set_type=created,
             )
         finally:
             if end_undo is not None:
