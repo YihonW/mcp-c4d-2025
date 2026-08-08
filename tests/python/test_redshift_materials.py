@@ -37,6 +37,7 @@ class FakeMaterialDocument:
         self.document = document
         self.materials = list(materials)
         self.undo_calls = []
+        self.undo_events = []
         self._link_materials()
 
     def _link_materials(self):
@@ -50,6 +51,13 @@ class FakeMaterialDocument:
 
     def AddUndo(self, undo_type, material):
         self.undo_calls.append((undo_type, material))
+        self.undo_events.append(("add", undo_type, material))
+
+    def StartUndo(self):
+        self.undo_events.append("start")
+
+    def EndUndo(self):
+        self.undo_events.append("end")
 
     def add_material(self, material):
         self.materials.append(material)
@@ -87,6 +95,8 @@ class RedshiftMaterialsTest(unittest.TestCase):
         for document, material_document in self.document_map.items():
             document.GetFirstMaterial = material_document.GetFirstMaterial
             document.AddUndo = material_document.AddUndo
+            document.StartUndo = material_document.StartUndo
+            document.EndUndo = material_document.EndUndo
         self.user_document = self.document_state.items[1]
         self.graph_description = FakeGraphDescription(self.document_state, self.document_map)
         self.maxon.GraphDescription = self.graph_description
@@ -149,6 +159,42 @@ class RedshiftMaterialsTest(unittest.TestCase):
             self.document_map[self.user_document].undo_calls,
             [(self.c4d.UNDOTYPE_NEW, self.document_map[self.user_document].materials[0])],
         )
+        self.assertEqual(
+            self.document_map[self.user_document].undo_events,
+            [
+                "start",
+                (
+                    "add",
+                    self.c4d.UNDOTYPE_NEW,
+                    self.document_map[self.user_document].materials[0],
+                ),
+                "end",
+            ],
+        )
+
+    def test_marks_undo_unsupported_without_a_complete_or_startable_undo_surface(self):
+        del self.user_document.EndUndo
+
+        incomplete = self.handle_rs_create_material({"document_name": "user", "name": "NoEnd"})
+
+        self.assertFalse(incomplete["undo_supported"])
+        self.assertEqual(self.document_map[self.user_document].undo_calls, [])
+        self.assertEqual(self.document_map[self.user_document].undo_events, [])
+
+        self.user_document.EndUndo = self.document_map[self.user_document].EndUndo
+
+        def fail_start_undo():
+            self.document_map[self.user_document].undo_events.append("start")
+            raise RuntimeError("undo unavailable")
+
+        self.user_document.StartUndo = fail_start_undo
+        failed_start = self.handle_rs_create_material(
+            {"document_name": "user", "name": "StartFails"}
+        )
+
+        self.assertFalse(failed_start["undo_supported"])
+        self.assertEqual(self.document_map[self.user_document].undo_calls, [])
+        self.assertEqual(self.document_map[self.user_document].undo_events, ["start"])
 
     def test_reuses_exactly_one_same_name_material_when_requested(self):
         material = FakeMaterial("RS_Mat")
