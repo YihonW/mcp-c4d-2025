@@ -7,6 +7,7 @@ __pycache__/
 .vscode/
 .idea/
 .claude
+.worktrees/
 
 # Ad-hoc scene dumps produced by dev-time exec_python — not part of the
 # shipping repo.
