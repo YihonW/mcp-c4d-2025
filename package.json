@@ -46,6 +46,7 @@
     "dev": "tsc --watch",
     "clean": "rimraf dist",
     "test": "vitest run",
+    "test:live:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/foundation-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",

@@ -12,6 +12,35 @@ const SERVER_ENTRY = path.join(REPO_ROOT, "dist", "index.js");
 
 export const TEST_PREFIX = "e2e_";
 
+type BridgeProbeDecision = {
+  ready: boolean;
+  reason?: string;
+};
+
+type BridgeCapabilities = {
+  c4d_version: number;
+};
+
+/** Fail-fast policy used by the non-skippable Cinema 4D 2025 smoke command. */
+export function requireLiveBridge(
+  probe: BridgeProbeDecision,
+  capabilities?: BridgeCapabilities,
+): void {
+  if (!probe.ready) {
+    const detail = probe.reason ? `: ${probe.reason}` : "";
+    throw new Error(`Cinema 4D bridge not reachable${detail}`);
+  }
+
+  const rawVersion = capabilities?.c4d_version;
+  const release =
+    typeof rawVersion === "number" && Number.isInteger(rawVersion)
+      ? Math.floor(rawVersion / 1000)
+      : undefined;
+  if (release !== 2025) {
+    throw new Error(`Cinema 4D 2025 required; bridge reports release ${release ?? "unknown"}`);
+  }
+}
+
 function ensureBuilt(): void {
   if (existsSync(SERVER_ENTRY)) return;
   const r = spawnSync("npm", ["run", "build"], { cwd: REPO_ROOT, stdio: "inherit", shell: true });
@@ -118,25 +147,33 @@ export async function probeBridge(suite: string): Promise<{
   reason?: string;
   client?: MCPTestClient;
 }> {
+  const strictLive = process.env.C4D_MCP_REQUIRE_LIVE === "1";
   const client = new MCPTestClient();
   try {
     await client.connect();
     const pong = await client.call<{ pong: boolean }>("ping", {});
     if (!pong?.pong) {
+      const unavailable = { ready: false, reason: "ping returned unexpected payload" } as const;
+      if (strictLive) throw new Error(unavailable.reason);
       await client.close();
-      printSkipBanner(suite, "ping returned unexpected payload");
-      return { ready: false, reason: "ping returned unexpected payload" };
+      printSkipBanner(suite, unavailable.reason);
+      return unavailable;
     }
     return { ready: true, client };
   } catch (err) {
     await client.close();
     const reason = err instanceof Error ? err.message : String(err);
+    if (strictLive) requireLiveBridge({ ready: false, reason });
     printSkipBanner(suite, reason);
     return { ready: false, reason };
   }
 }
 
-function printSkipBanner(suite: string, reason: string): void {
+export function printSkipBanner(
+  suite: string,
+  reason: string,
+  summary = "Cinema 4D bridge not reachable",
+): void {
   const host = process.env.C4D_MCP_HOST ?? process.env.C4D_BRIDGE_HOST ?? "127.0.0.1";
   const port = process.env.C4D_MCP_PORT ?? process.env.C4D_BRIDGE_PORT ?? "18710";
   // Visible banner so skips are not confused with success.
@@ -144,7 +181,7 @@ function printSkipBanner(suite: string, reason: string): void {
   console.warn(
     [
       divider,
-      `[e2e ${suite}] SKIPPING — Cinema 4D bridge not reachable`,
+      `[e2e ${suite}] SKIPPING — ${summary}`,
       ` reason : ${reason}`,
       ` target : ${host}:${port}`,
       " ",
