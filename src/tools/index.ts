@@ -54,6 +54,7 @@ import { renderTool } from "./render.js";
 import { resetSceneTool } from "./reset-scene.js";
 import { rsGetCapabilitiesTool } from "./rs-get-capabilities.js";
 import { rsCreateMaterialTool } from "./rs-create-material.js";
+import { rsSetMaterialPbrTool } from "./rs-set-material-pbr.js";
 import { sampleTransformTool } from "./sample-transform.js";
 import { saveDocumentTool } from "./save-document.js";
 import { setActiveDocumentTool } from "./set-active-document.js";
@@ -169,6 +170,7 @@ export const ALL_TOOLS: AnyTool[] = [
   // Redshift
   rsGetCapabilitiesTool,
   rsCreateMaterialTool,
+  rsSetMaterialPbrTool,
 ];
 
 /**
