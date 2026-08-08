@@ -47,7 +47,7 @@ All tools in [TOOLS.md](./TOOLS.md), including advanced modeling, mesh, document
 A release claim requires all of the following evidence from the candidate commit:
 
 1. `npm run build`, `npm test`, and `npm run check` exit `0`.
-2. `npm audit --audit-level=high` exits `0`; otherwise the exact high-severity dependency chain is a release blocker.
+2. `npm audit --audit-level=high` exits `0`. This gate is satisfied for lockfile commit `d096c18`; rerun it after any dependency or lockfile change.
 3. The installer dry-run target is reviewed before an explicit install.
 4. `npm run test:live:2025` exits `0` against Cinema 4D 2025.3.2 with no skipped foundation test.
 5. The recorded evidence names the commit, Node version, Cinema 4D build, bridge version, relevant environment gates, command exit codes, and skipped-test count.
