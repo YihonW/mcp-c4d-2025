@@ -60,7 +60,7 @@ Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
 
 ## 下一次真实验证
 
-用户可在离线开发期间正常使用 C4D。20:38 安装版已完成下述真实检查；最新节点 ID 修复已于 20:52 在 C4D 完全退出时安装，等待用户手动启动。先只读验证 runtime/security/Redshift capabilities，再在用户暂停场景操作的时间内运行严格 Redshift 测试；仍只使用一个临时工程并清理，不运行全部历史 E2E。
+用户可在离线开发期间正常使用 C4D。20:52 安装版已完成下述复验，但仍未通过 PBR；最新原生 Pair 修复尚未安装，需用户方便时保存退出，再安装并手动启动。先只读验证 runtime/security/Redshift capabilities，再在用户暂停场景操作的时间内运行严格 Redshift 测试；测试现在会在 PBR 写入前核对实际节点 ID，仍只使用一个临时工程并清理，不运行全部历史 E2E。
 
 只有两套严格测试通过、零跳过、输出文件有效且工程列表/焦点恢复后，才能更新 compatibility 中对应的真实验证状态。未来的“全控制”扩展仍需按实际 SDK 能力逐项实现和验证。
 
@@ -89,6 +89,18 @@ Maxon 官方示例使用 `node.GetValue("net.maxon.node.attribute.assetid")[0]` 
 - 新安装目录与主目录安装源的 70 个文件（含本地生成文件）相对路径与 SHA-256 全部一致，插件扫描目录中旧备份数为 0。
 - 本次未启动 C4D、创建工程或运行真实测试。补丁已经落盘，仍需用户手动启动后的加载检查和严格 Redshift 流程验证，不能宣称 PBR 或正式渲染已经通过。
 
+## 原生 Pair 复验与修复：2026-09-05 20:57–21:03（北京时间）
+
+- 启动后只读版本、安全设置与 Redshift 能力检查通过。检查期间工程列表从单个“未标题 1”变为“未标题 2”和 `HX_C04_0905_V8.c4d`，未推定变化原因。按唯一名称向“未标题 1”添加保留标记的请求被拒绝，标记没有创建；20:57:00 的严格测试随后被空白工程保护拒绝，没有插入测试工程。
+- 明确告知用户后切到非空工程，20:57:59 再执行一次严格 Redshift 测试：1 failed、0 skipped、exit 1、总用时 3.20 秒。仍在 `rs_set_material_pbr` 报标准材质节点未找到，未进入渲染，测试工程已清理。
+- 没有再次盲目重跑整套测试。另作一次只包含创建临时工程、创建诊断材质、读取节点信息、立即关闭的诊断。诊断工程唯一名称为 `e2e_rs_node_diag_1a071a75291`；材质中确有 `standardmaterial@H4UhBxbnDpsqpnJtZdXV0a` 和 `output@VeKy2dNJIBKii87x4T6qjZ` 两个实际节点。
+- 运行时节点列表返回的 asset ID 字符串分别为 `(com.redshift3d.redshift4c4d.nodes.core.standardmaterial,)` 与 `(com.redshift3d.redshift4c4d.node.output,)`；根与端口容器为 `(,)`。这说明上一版 `isinstance(value, (tuple, list))` 未覆盖 Maxon 原生容器，仍把 ID/version 整体字符串化。不能把上次普通 tuple 的回归通过视为真实修复通过。
+- 当前实现按 SDK 示例直接索引非空属性值的 `[0]`，不再依赖 Python tuple/list 类型判断。测试使用不继承 tuple/list、但支持索引的原生容器替身，字符串形态与实际诊断一致；同时覆盖普通 tuple、空 ID 和 None。
+- 修改替身后先复现相同错误，再完成修复：Python 全部 96 项通过，TypeScript 单元测试 73 项通过，类型检查、修改文件 lint/format、构建通过。关闭两个 live 标志且端口设为 65534 时，Redshift E2E 只跳过 1 项、不连接 C4D；这不是 live 通过证据。
+- 严格 E2E 增加 PBR 写入前的节点读取和精确 ID 断言。今后该检查失败时会显示实际 ID 列表，避免只留下“节点未找到”的下游错误。
+- 本轮实际新建两个临时工程（一次严格测试、一次独立诊断，串行使用），均已关闭；没有批量重试，也没有残留标记。最后恢复“未标题 2”为活动工程，两份原工程的名称、路径、顺序保持不变，并已通知用户可以恢复工作。
+- 当前最新修改只在主目录源码中，没有重装或热加载正在运行的插件，仍需下一次安装及真实验证。
+
 ## 依据
 
 - 本机 `C:\Program Files\Maxon Cinema 4D 2025\Redshift\res\description\orslight.h`、`drsfile.h`、`drsaov.h`。
@@ -97,4 +109,5 @@ Maxon 官方示例使用 `node.GetValue("net.maxon.node.attribute.assetid")[0]` 
 - [Maxon 2025.3 GraphDescription](https://developers.maxon.net/docs/py/2025_3_0/modules/maxon_generated/frameworks/nodes/interface/maxon.GraphDescription.html)：element 与 name 参数，以及取得缺失 graph 时会创建的语义。
 - [Maxon Dome 贴图参数讨论](https://developers.maxon.net/forum/topic/14172/setting-bitmap-in-redshift-dome-light)：RSFILE 复合参数的实际 datatype 和 STRING 子通道。
 - [Maxon 节点与贴图路径示例](https://developers.maxon.net/topic/15190/get-value-of-texture-node-filepath-port)：SDK 专员示例中的 `(asset ID, version)` 取值、节点遍历和纹理路径端口。
+- [Maxon 2025.3 Pair](https://developers.maxon.net/docs/py/2025_3_0/modules/maxon_generated/datatypes/collection/maxon.Pair.html)：原生容器的继承关系及索引访问。
 - [OpenAI MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)：STDIO command/args/env_vars 和 tool timeout。按 OpenAI Docs 核对后保留原启动路径与 token 转发，仅补足渲染等待时间；原配置已备份为 `C:\Users\Yihong\.codex\config.toml.backup-c4d-render-20260905`。

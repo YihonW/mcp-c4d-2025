@@ -60,6 +60,8 @@ On 2026-09-05, the first candidate's read-only checks found an unresolved asset-
 
 Installation update (2026-09-05 20:52 Beijing time): the node-ID fix from `023406e` was installed after confirming Cinema 4D was fully closed. All 70 installed files matched the source by relative path and SHA-256; all 62 files in the previous plugin were preserved and hash-verified in an external backup. Live verification of this latest fix is still pending the user's manual startup.
 
+Retest update (2026-09-05 20:57 Beijing time): the installed `023406e` candidate still failed at standard-material matching, before rendering. A separate, immediately cleaned diagnostic document confirmed that both expected nodes exist, but their asset IDs were still stringified as `(asset-id,)`. Maxon's native pair is indexable without being a Python tuple/list, so the previous type check missed it. The latest source indexes the attribute directly, adds a non-builtin pair regression and an exact node-ID gate before live PBR writes, and passes 96 Python plus 73 TypeScript unit tests. This latest source is not yet installed or live-verified. Both temporary documents used during this retest/diagnostic were closed; no user document was closed or saved.
+
 ## Inherited tool catalog
 
 All tools in [TOOLS.md](./TOOLS.md) outside the foundation boundary and the explicitly offline-tested Redshift boundary—including advanced modeling, mesh, document I/O outside the foundation save-copy path, generic node materials, Xpresso, animation, layers, MoGraph, plugin options, generic render operations, and Python escape hatches—remain inherited/unverified on Cinema 4D 2025.3.2 until a dedicated live test records evidence for them.

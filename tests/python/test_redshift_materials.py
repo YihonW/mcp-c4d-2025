@@ -114,6 +114,19 @@ class FakePortList:
         return iter(self.ports.values())
 
 
+class FakeSdkAssetIdAndVersion:
+    """Maxon's indexable pair is not a Python tuple/list."""
+
+    def __init__(self, asset_id, version=""):
+        self.values = (FakeId(asset_id), FakeId(version))
+
+    def __getitem__(self, index):
+        return self.values[index]
+
+    def __str__(self):
+        return f"({self.values[0]},{self.values[1]})"
+
+
 class FakeGraphNode:
     def __init__(self, node_id, asset_id=None):
         self.node_id = node_id
@@ -144,7 +157,7 @@ class FakeGraphNode:
 
     def GetValue(self, attribute):
         if attribute == "net.maxon.node.attribute.assetid":
-            return (FakeId(self.asset_id), FakeId("1.0")) if self.asset_id else None
+            return FakeSdkAssetIdAndVersion(self.asset_id or "")
         return None
 
     def GetInputs(self):
@@ -425,6 +438,18 @@ class RedshiftMaterialsTest(unittest.TestCase):
                 nodes = {entry["id"]: entry["asset_id"] for entry in read_nodes(graph)}
                 self.assertEqual(nodes["standard"], NODE_ASSETS["standard"])
                 self.assertEqual(nodes["output"], NODE_ASSETS["output"])
+
+    def test_asset_id_reader_accepts_native_pair_without_builtin_tuple_check(self):
+        materials = importlib.import_module("bridge.handlers.node_materials")
+        for value, expected in (
+            (FakeSdkAssetIdAndVersion(NODE_ASSETS["standard"], "1.0"), NODE_ASSETS["standard"]),
+            ((FakeId(NODE_ASSETS["output"]), FakeId("")), NODE_ASSETS["output"]),
+            (FakeSdkAssetIdAndVersion(""), ""),
+            (None, ""),
+        ):
+            with self.subTest(value=str(value)):
+                node = types.SimpleNamespace(GetValue=lambda _attribute, value=value: value)
+                self.assertEqual(materials._node_asset_id(node), expected)
 
     def test_runtime_ports_use_asset_id_without_version(self):
         materials = importlib.import_module("bridge.handlers.redshift.materials")

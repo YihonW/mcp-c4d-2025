@@ -273,9 +273,8 @@ def _get_graph(element, space_id: str):
 def _node_asset_id(node) -> str:
     """Read the ID part of the SDK's (asset ID, version) attribute."""
     value = node.GetValue("net.maxon.node.attribute.assetid")
-    if isinstance(value, (tuple, list)):
-        value = value[0] if value else None
-    return str(value) if value is not None else ""
+    # Maxon's native Pair/Tuple supports indexing but is not a Python tuple.
+    return str(value[0]) if value is not None else ""
 
 
 def _collect_nodes(graph) -> list[dict[str, Any]]:

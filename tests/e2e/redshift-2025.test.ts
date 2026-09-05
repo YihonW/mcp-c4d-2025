@@ -58,10 +58,11 @@ let creationAttempted = false;
 type DocumentEntry = { index: number; name: string; path: string; active: boolean };
 type DocumentList = { documents: DocumentEntry[]; count: number };
 type BatchResult = { results: Array<{ result?: unknown; error?: string }>; count: number };
+type GraphSnapshot = { supported: boolean; nodes: Array<{ asset_id: string | null }> };
 
 const withoutTransientIndex = ({ index: _index, ...document }: DocumentEntry) => document;
 
-async function documentScopedGraphSnapshot(c: MCPTestClient): Promise<unknown> {
+async function documentScopedGraphSnapshot(c: MCPTestClient): Promise<GraphSnapshot> {
   const batch = await c.call<BatchResult>("batch", {
     document_name: documentName,
     undo_group: false,
@@ -77,7 +78,7 @@ async function documentScopedGraphSnapshot(c: MCPTestClient): Promise<unknown> {
     ],
   });
   expect(batch.results[0].error).toBeUndefined();
-  return batch.results[0].result;
+  return batch.results[0].result as GraphSnapshot;
 }
 
 describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
@@ -150,6 +151,14 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
         expect(createdObjects.results.map((entry) => entry.error)).toEqual([undefined, undefined]);
 
         await c.call("rs_create_material", { document_name: documentName, name: materialName });
+        const initialGraph = await documentScopedGraphSnapshot(c);
+        expect(initialGraph.supported).toBe(true);
+        expect(initialGraph.nodes.map((node) => node.asset_id)).toEqual(
+          expect.arrayContaining([
+            "com.redshift3d.redshift4c4d.nodes.core.standardmaterial",
+            "com.redshift3d.redshift4c4d.node.output",
+          ]),
+        );
         await c.call("rs_set_material_pbr", {
           document_name: documentName,
           material: { kind: "material", name: materialName },
