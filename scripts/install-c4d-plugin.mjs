@@ -180,7 +180,20 @@ async function validateInstallPlan(repoRoot, preference, appData) {
     throw new Error("Real source and destination paths cannot overlap");
   }
 
-  return plan;
+  const backupRoot = path.win32.join(normalizedPreference, "mcp_bridge_backups");
+  const backupAncestor = await resolveExistingAncestor(backupRoot);
+  const realBackupRoot = path.win32.join(
+    backupAncestor.realPath,
+    path.win32.relative(backupAncestor.path, backupRoot),
+  );
+  if (!samePath(realBackupRoot, path.win32.join(realPreference, "mcp_bridge_backups"))) {
+    throw new Error(`Backup real path must not follow a reparse point: ${realBackupRoot}`);
+  }
+  if (isSameOrWithin(realSource, realBackupRoot) || isSameOrWithin(realBackupRoot, realSource)) {
+    throw new Error("Real source and backup paths cannot overlap");
+  }
+
+  return { ...plan, backupRoot };
 }
 
 async function main() {
@@ -192,6 +205,7 @@ async function main() {
   console.log(`Mode: ${install ? "install" : "dry-run"}`);
   console.log(`Source: ${plan.source}`);
   console.log(`Destination: ${plan.destination}`);
+  console.log(`Backup directory (outside plugins): ${plan.backupRoot}`);
 
   if (!install) {
     console.log("No files were changed. Pass --install to apply this plan.");
@@ -201,7 +215,8 @@ async function main() {
   await mkdir(path.win32.dirname(plan.destination), { recursive: true });
   if (await pathExists(plan.destination)) {
     const timestamp = new Date().toISOString().replaceAll(":", "-");
-    const backup = `${plan.destination}.backup-${timestamp}`;
+    const backup = path.win32.join(plan.backupRoot, `cinema4d_mcp_bridge.backup-${timestamp}`);
+    await mkdir(plan.backupRoot, { recursive: true });
     await rename(plan.destination, backup);
     console.log(`Backup: ${backup}`);
   }

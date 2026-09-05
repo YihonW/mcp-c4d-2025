@@ -15,6 +15,14 @@ RS_RENDERER_ID = 1036219
 RS_POST_EFFECT_ID = 1040189
 RS_NODE_SPACE_ID = "com.redshift3d.redshift4c4d.class.nodespace"
 
+LIGHT_TYPE_SYMBOLS = {
+    "area": "REDSHIFT_LIGHT_TYPE_PHYSICAL_AREA",
+    "dome": "REDSHIFT_LIGHT_TYPE_DOME",
+    "sun": "REDSHIFT_LIGHT_TYPE_PHYSICALSUN",
+    "point": "REDSHIFT_LIGHT_TYPE_PHYSICAL_POINT",
+    "spot": "REDSHIFT_LIGHT_TYPE_PHYSICAL_SPOT",
+}
+
 _REQUIRED_AOV_SYMBOLS = (
     "FindAddVideoPost",
     "RendererGetAOVs",
@@ -126,7 +134,7 @@ def _node_assets() -> tuple[list[object], str | None]:
     try:
         maxon = importlib.import_module("maxon")
         repository = maxon.AssetInterface.GetUserPrefsRepository()
-        assets = list(repository.FindAssets(maxon.AssetTypes.NodeTemplate))
+        assets = list(repository.FindAssets(maxon.AssetTypes.NodeTemplate().GetId()))
         return assets, None
     except Exception as exc:
         return [], f"Redshift node-template repository unavailable: {exc}"
@@ -186,8 +194,7 @@ def probe_redshift() -> dict[str, object]:
     )
 
     light_types: dict[str, object] = {}
-    for name in ("area", "dome", "sun", "point", "spot"):
-        symbol = f"REDSHIFT_LIGHT_TYPE_{name.upper()}"
+    for name, symbol in LIGHT_TYPE_SYMBOLS.items():
         light_types[name] = _feature(
             hasattr(c4d, symbol), f"Cinema 4D symbol unavailable: {symbol}"
         )

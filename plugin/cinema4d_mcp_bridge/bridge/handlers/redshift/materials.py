@@ -56,7 +56,6 @@ def handle_rs_create_material(params: dict[str, object]) -> dict[str, object]:
             raise ValueError(f"material already exists: {name!r}")
 
         created = not matches
-        material_or_name = name if created else matches[0]
         undo_type = getattr(c4d, "UNDOTYPE_NEW", None)
         start_undo = getattr(document, "StartUndo", None)
         end_undo = getattr(document, "EndUndo", None)
@@ -79,9 +78,10 @@ def handle_rs_create_material(params: dict[str, object]) -> dict[str, object]:
 
         try:
             graph = maxon.GraphDescription.CreateGraph(
-                material_or_name,
+                element=None if created else matches[0],
                 nodeSpaceId=maxon.Id(RS_NODE_SPACE_ID),
                 createEmpty=False,
+                name=name,
             )
             if graph is None:
                 raise RuntimeError("failed to create or obtain Redshift material graph")
@@ -111,7 +111,7 @@ def handle_rs_create_material(params: dict[str, object]) -> dict[str, object]:
 def _require_pbr_node_assets() -> None:
     try:
         repository = maxon.AssetInterface.GetUserPrefsRepository()
-        assets = repository.FindAssets(maxon.AssetTypes.NodeTemplate)
+        assets = repository.FindAssets(maxon.AssetTypes.NodeTemplate().GetId())
         available = {str(asset.GetId()) for asset in assets}
     except Exception as exc:
         raise RuntimeError(f"Redshift node-template repository unavailable: {exc}") from exc
@@ -144,7 +144,8 @@ def _graph_nodes(graph) -> list[dict[str, object]]:
             pass
 
     with contextlib.suppress(Exception):
-        visit(graph.GetRoot())
+        for child in graph.GetRoot().GetChildren():
+            visit(child)
     return nodes
 
 
@@ -364,10 +365,9 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
         if len(matches) != 1:
             raise ValueError(f"material name is ambiguous: {material_name!r}")
         material = matches[0]
-        graph = maxon.GraphDescription.GetGraph(
-            material, nodeSpaceId=maxon.Id(RS_NODE_SPACE_ID), createEmpty=False
-        )
-        if graph is None:
+        node_material = material.GetNodeMaterialReference()
+        graph = node_material.GetGraph(maxon.Id(RS_NODE_SPACE_ID)) if node_material else None
+        if not graph:
             raise RuntimeError("Redshift material graph is unavailable")
         nodes = _graph_nodes(graph)
 

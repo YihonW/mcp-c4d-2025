@@ -12,10 +12,10 @@ from ._helpers import document_scope, load_redshift, require_redshift
 _AOV_ALIASES = {
     "beauty": "REDSHIFT_AOV_TYPE_BEAUTY",
     "diffuse_lighting": "REDSHIFT_AOV_TYPE_DIFFUSE_LIGHTING",
-    "reflection": "REDSHIFT_AOV_TYPE_REFLECTION",
-    "refraction": "REDSHIFT_AOV_TYPE_REFRACTION",
+    "reflection": "REDSHIFT_AOV_TYPE_REFLECTIONS",
+    "refraction": "REDSHIFT_AOV_TYPE_REFRACTIONS",
     "depth": "REDSHIFT_AOV_TYPE_DEPTH",
-    "normal": "REDSHIFT_AOV_TYPE_NORMAL",
+    "normal": "REDSHIFT_AOV_TYPE_NORMALS",
     "cryptomatte": "REDSHIFT_AOV_TYPE_CRYPTOMATTE",
     "object_id": "REDSHIFT_AOV_TYPE_OBJECT_ID",
 }

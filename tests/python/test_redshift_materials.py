@@ -34,12 +34,19 @@ class FakeMaterial:
     def __init__(self, name: str):
         self.name = name
         self.next: FakeMaterial | None = None
+        self.graph = None
 
     def GetName(self):
         return self.name
 
     def GetNext(self):
         return self.next
+
+    def GetNodeMaterialReference(self):
+        return self
+
+    def GetGraph(self, _node_space):
+        return self.graph
 
 
 PORTS = {
@@ -156,7 +163,7 @@ class FakeGraphNode:
 class FakeGraph:
     def __init__(self, material):
         self.material = material
-        self.root = FakeGraphNode("root")
+        self.root = FakeGraphNode("")
         self.root.children = [
             FakeGraphNode("output", NODE_ASSETS["output"]),
             FakeGraphNode("standard", NODE_ASSETS["standard"]),
@@ -273,7 +280,10 @@ class FakeGraphDescription:
         self.calls = []
         self.active_document = None
 
-    def CreateGraph(self, material_or_name, *, nodeSpaceId, createEmpty):
+    def CreateGraph(self, element=None, *, nodeSpaceId, createEmpty, name=""):
+        if element is not None and not isinstance(element, FakeMaterial):
+            raise TypeError("element must be BaseList2D or None; pass material name by keyword")
+        material_or_name = element if element is not None else name
         self.active_document = self.document_state.active
         self.calls.append((material_or_name, str(nodeSpaceId), createEmpty))
         if isinstance(material_or_name, str):
@@ -293,7 +303,9 @@ class FakePbrGraphDescription(FakeGraphDescription):
         self.partial_write_on_apply = False
 
     def graph_for(self, material):
-        return self.graphs.setdefault(material, FakeGraph(material))
+        graph = self.graphs.setdefault(material, FakeGraph(material))
+        material.graph = graph
+        return graph
 
     def GetGraph(self, material, *, nodeSpaceId, createEmpty=False):
         self.calls.append(("get", material, str(nodeSpaceId), createEmpty))
@@ -393,7 +405,22 @@ class RedshiftMaterialsTest(unittest.TestCase):
     def add_pbr_material(self, name="RS_Mat"):
         material = FakeMaterial(name)
         self.document_map[self.user_document].add_material(material)
+        self.graph_description.graph_for(material)
         return material
+
+    def test_missing_graph_is_rejected_without_creating_one(self):
+        material = FakeMaterial("Classic")
+        self.document_map[self.user_document].add_material(material)
+        with self.assertRaisesRegex(RuntimeError, "material graph is unavailable"):
+            self.handle_rs_set_material_pbr(
+                {
+                    "document_name": "user",
+                    "material": {"kind": "material", "name": "Classic"},
+                    "roughness": 0.35,
+                }
+            )
+        self.assertIsNone(material.graph)
+        self.assertEqual(self.graph_description.calls, [])
 
     def test_creates_a_material_in_the_requested_document_and_records_undo(self):
         result = self.handle_rs_create_material({"document_name": "user", "name": "RS_Mat"})

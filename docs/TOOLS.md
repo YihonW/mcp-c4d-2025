@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-65 tools across 16 groups.
+76 tools across 17 groups.
 
 ## Basics
 
@@ -182,3 +182,21 @@ LayerObject CRUD and per-layer flag toggles.
 | `assign_to_layer`  | Place a target (object / tag / material) on a named layer.                                               |
 | `get_object_layer` | Return the layer currently assigned to a target entity (object / tag / material), or null if unassigned. |
 | `set_layer_flags`  | Toggle a layer's visibility / render / lock flags in one call.                                           |
+
+## Redshift
+
+Validated high-level Redshift materials, lights, cameras, AOVs, and renders.
+
+| Tool                  | Description                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `rs_get_capabilities` | Report exact Redshift renderer, module, node-space, AOV, light, camera, and render support without mutating the scene. |
+| `rs_create_material`  | Create a Redshift node material, or reuse one exact-name match when requested.                                         |
+| `rs_create_light`     | Create or update a native Redshift light using only runtime-supported properties.                                      |
+| `rs_set_camera`       | Create or update a native Redshift camera and report unavailable requested settings.                                   |
+| `rs_set_material_pbr` | Patch supplied Redshift Standard Material PBR channels.                                                                |
+| `rs_list_aovs`        | List Redshift AOVs from the active or named RenderData.                                                                |
+| `rs_upsert_aov`       | Create or update one exact Redshift AOV type/name pair.                                                                |
+| `rs_remove_aov`       | Remove one indexed Redshift AOV when its expected name and type still match.                                           |
+| `rs_clear_aovs`       | Clear all Redshift AOVs from one explicitly named document.                                                            |
+| `rs_configure_render` | Create or update a validated Redshift RenderData without implicit activation.                                          |
+| `rs_render`           | Run a guarded synchronous Redshift Beauty+AOV render.                                                                  |

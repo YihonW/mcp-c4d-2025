@@ -6,20 +6,23 @@ import math
 
 import c4d
 
-from ._helpers import document_scope, require_redshift, require_texture_path
-
-LIGHT_TYPE_SYMBOLS = {
-    "area": "REDSHIFT_LIGHT_TYPE_AREA",
-    "dome": "REDSHIFT_LIGHT_TYPE_DOME",
-    "sun": "REDSHIFT_LIGHT_TYPE_SUN",
-    "point": "REDSHIFT_LIGHT_TYPE_POINT",
-    "spot": "REDSHIFT_LIGHT_TYPE_SPOT",
-}
+from ._helpers import LIGHT_TYPE_SYMBOLS, document_scope, require_redshift, require_texture_path
 
 _LIGHT_PARAMETER_SYMBOLS = {
-    "color": "REDSHIFT_LIGHT_COLOR",
-    "intensity": "REDSHIFT_LIGHT_INTENSITY",
-    "exposure": "REDSHIFT_LIGHT_EXPOSURE",
+    "physical": {
+        "color": "REDSHIFT_LIGHT_PHYSICAL_COLOR",
+        "intensity": "REDSHIFT_LIGHT_PHYSICAL_INTENSITY",
+        "exposure": "REDSHIFT_LIGHT_PHYSICAL_EXPOSURE",
+    },
+    "dome": {
+        "color": "REDSHIFT_LIGHT_DOME_COLOR",
+        "intensity": "REDSHIFT_LIGHT_DOME_MULTIPLIER",
+        "exposure": "REDSHIFT_LIGHT_DOME_EXPOSURE0",
+    },
+    "sun": {
+        "color": "REDSHIFT_LIGHT_PHYSICALSUN_TINT",
+        "intensity": "REDSHIFT_LIGHT_PHYSICALSUN_MULTIPLIER",
+    },
 }
 
 
@@ -96,26 +99,36 @@ def _validate_input(params: dict[str, object]) -> tuple[str, str, bool, dict[str
 
 def _preflight(
     light_type: str, values: dict[str, object]
-) -> tuple[object, object, dict[str, object], object | None]:
+) -> tuple[object, object, dict[str, object]]:
     type_value = _runtime_symbol(LIGHT_TYPE_SYMBOLS[light_type], setting=light_type)
     type_parameter_id = _runtime_symbol("REDSHIFT_LIGHT_TYPE", setting="type")
-    parameter_ids = {
-        setting: _runtime_symbol(symbol, setting=setting)
-        for setting, symbol in _LIGHT_PARAMETER_SYMBOLS.items()
-        if setting in values
-    }
-    texture_descid = None
-    if "dome_texture" in values:
-        dome_id = _runtime_symbol("REDSHIFT_LIGHT_DOME_TEX0", setting="dome_texture")
-        file_path_id = _runtime_symbol("REDSHIFT_FILE_PATH", setting="dome_texture")
-        container_type = _runtime_symbol("DTYPE_BASECONTAINER", setting="dome_texture")
-        filename_type = _runtime_symbol("DTYPE_FILENAME", setting="dome_texture")
-        light_type_id = _runtime_symbol("Orslight", setting="dome_texture")
-        texture_descid = c4d.DescID(
-            c4d.DescLevel(dome_id, container_type, light_type_id),
-            c4d.DescLevel(file_path_id, filename_type, light_type_id),
-        )
-    return type_value, type_parameter_id, parameter_ids, texture_descid
+    family = light_type if light_type in ("dome", "sun") else "physical"
+    symbols = _LIGHT_PARAMETER_SYMBOLS[family]
+    parameter_ids = {}
+    for setting in ("color", "intensity", "exposure"):
+        if setting not in values:
+            continue
+        if setting not in symbols:
+            raise RuntimeError(f"{setting} unsupported for Redshift {light_type} lights")
+        parameter_ids[setting] = _runtime_symbol(symbols[setting], setting=setting)
+    return type_value, type_parameter_id, parameter_ids
+
+
+def _dome_texture_descid(obj):
+    dome_id = _runtime_symbol("REDSHIFT_LIGHT_DOME_TEX0", setting="dome_texture")
+    file_path_id = _runtime_symbol("REDSHIFT_FILE_PATH", setting="dome_texture")
+    string_type = _runtime_symbol("DTYPE_STRING", setting="dome_texture")
+    flags = _runtime_symbol("DESCFLAGS_DESC_0", setting="dome_texture")
+    for _data, desc_id, _group in obj.GetDescription(flags):
+        if desc_id.GetDepth() == 1 and desc_id[0].id == dome_id:
+            # RSFILE is a custom datatype, not a BaseContainer. Read its exact
+            # type and creator from the runtime description before insertion.
+            level = desc_id[0]
+            return c4d.DescID(
+                c4d.DescLevel(dome_id, level.dtype, level.creator),
+                c4d.DescLevel(file_path_id, string_type, 0),
+            )
+    raise RuntimeError("dome_texture unsupported: runtime texture description unavailable")
 
 
 def _start_undo(document, undo_type, obj, *, insert=None) -> tuple[bool, object | None]:
@@ -151,16 +164,10 @@ def _start_undo(document, undo_type, obj, *, insert=None) -> tuple[bool, object 
 
 def _apply_light(
     obj,
-    type_value,
-    type_parameter_id,
     parameter_ids: dict[str, object],
     texture_descid,
     values: dict[str, object],
-    *,
-    set_type: bool,
 ) -> list[str]:
-    if set_type:
-        obj[type_parameter_id] = type_value
     applied: list[str] = []
     if "position" in values:
         obj.SetRelPos(c4d.Vector(*values["position"]))
@@ -185,7 +192,7 @@ def handle_rs_create_light(params: dict[str, object]) -> dict[str, object]:
 
     name, light_type, update_if_exists, values = _validate_input(params)
     require_redshift("lights")
-    type_value, type_parameter_id, parameter_ids, texture_descid = _preflight(light_type, values)
+    type_value, type_parameter_id, parameter_ids = _preflight(light_type, values)
     light_object_type = _runtime_symbol("Orslight", setting="light")
     with document_scope(params.get("document_name"), required=True) as document:
         matches = _objects_named(document, name)
@@ -200,6 +207,7 @@ def handle_rs_create_light(params: dict[str, object]) -> dict[str, object]:
             if obj is None:
                 raise RuntimeError("failed to create native Redshift light")
             obj.SetName(name)
+            obj[type_parameter_id] = type_value
         else:
             obj = matches[0]
             if obj.GetType() != light_object_type:
@@ -211,6 +219,7 @@ def handle_rs_create_light(params: dict[str, object]) -> dict[str, object]:
             if existing_type_value != type_value:
                 raise ValueError(f"Redshift light type does not match requested type: {name!r}")
 
+        texture_descid = _dome_texture_descid(obj) if "dome_texture" in values else None
         undo_type = getattr(c4d, "UNDOTYPE_NEW" if created else "UNDOTYPE_CHANGE", None)
         undo_supported, end_undo = _start_undo(
             document,
@@ -221,12 +230,9 @@ def handle_rs_create_light(params: dict[str, object]) -> dict[str, object]:
         try:
             applied = _apply_light(
                 obj,
-                type_value,
-                type_parameter_id,
                 parameter_ids,
                 texture_descid,
                 values,
-                set_type=created,
             )
         finally:
             if end_undo is not None:

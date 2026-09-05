@@ -1,6 +1,6 @@
 # Compatibility and verification status
 
-This fork targets Cinema 4D 2025.3.2. A target is not a support claim: compatibility is promoted only by a successful, non-skipped `npm run test:live:2025` run against the exact runtime named below.
+This fork targets Cinema 4D 2025.3.2. A target is not a support claim: foundation compatibility is promoted only by a successful, non-skipped `npm run test:live:2025` run, and Redshift compatibility requires the separate strict `npm run test:live:redshift:2025` gate against the exact runtime named below.
 
 ## Current status
 
@@ -11,12 +11,13 @@ This fork targets Cinema 4D 2025.3.2. A target is not a support claim: compatibi
 | Cinema 4D 2026.x   | **Inherited / unverified in this fork**                  | Upstream observations may exist, but they are not current live evidence for this fork or for 2025. |
 | Other releases     | **Unsupported / unverified**                             | No compatibility evidence is recorded.                                                             |
 
-Only the exact foundation behaviors below are claimed as live-verified. No complete tool group and no blanket claim for all 65 tools is implied.
+Only the exact foundation behaviors below are claimed as live-verified. The 11 Redshift tools are offline-tested but have not yet passed the strict live gate against the installed candidate. No complete tool group and no blanket claim for all 76 tools is implied.
 
 ## Evidence labels
 
 - **Inherited / unverified:** implementation or documentation carried from the existing `mcp-cinema4d` codebase, or a tool not exercised by the strict foundation suite. Presence in [TOOLS.md](./TOOLS.md) only means the tool is registered in source.
 - **Foundation live-verified:** the exact behavior was exercised by `npm run test:live:2025`, the command exited `0`, the bridge and security snapshot matched the recorded runtime below, and the foundation test had no skip.
+- **Redshift offline-tested:** TypeScript schemas and registration plus Python bridge behavior pass fake-runtime regression tests, build, lint, and formatting gates. No real Cinema 4D or Redshift compatibility claim is made until the strict Redshift live gate passes without skips.
 - **Unsupported / unverified:** no accepted live evidence exists. This label does not predict whether a tool happens to work.
 
 ## Foundation verification boundary
@@ -36,11 +37,27 @@ The strict suite currently covers one end-to-end path:
 
 Recorded run: Windows x64, Cinema 4D raw version `2025302` (2025.3.2), Node.js 24.18.0, bridge 0.4.0, loopback transport, token authentication disabled, and `exec_python` disabled. `npm run test:live:2025` exited `0` with one passing foundation test and zero skipped tests on 2026-08-08.
 
-Even after this suite passes, the claim is limited to the exact Cinema 4D build, operating system, bridge version, security posture, and foundation path tested. It does **not** promote all 65 tools or any complete tool group.
+Even after this suite passes, the claim is limited to the exact Cinema 4D build, operating system, bridge version, security posture, and foundation path tested. It does **not** promote all 76 tools or any complete tool group.
+
+## Redshift verification boundary
+
+The following tools are implemented and offline-tested but have not yet been live-verified against the installed Cinema 4D 2025.3.2 and Redshift candidate:
+
+| Area                 | Tools                                                             | Status                  |
+| -------------------- | ----------------------------------------------------------------- | ----------------------- |
+| Capability discovery | `rs_get_capabilities`                                             | Redshift offline-tested |
+| Materials            | `rs_create_material`, `rs_set_material_pbr`                       | Redshift offline-tested |
+| Lights and camera    | `rs_create_light`, `rs_set_camera`                                | Redshift offline-tested |
+| AOVs                 | `rs_list_aovs`, `rs_upsert_aov`, `rs_remove_aov`, `rs_clear_aovs` | Redshift offline-tested |
+| Render setup/output  | `rs_configure_render`, `rs_render`                                | Redshift offline-tested |
+
+`npm run test:live:redshift:2025` is defined but has not yet been accepted as live evidence. The release candidate must be installed through the reviewed installer, Cinema 4D must be restarted manually with saved user work, token authentication must be enabled, and the command must finish with no skip before these rows can be promoted.
+
+On 2026-09-05, an installed candidate passed authenticated read-only connection checks on Cinema 4D `2025302`, bridge `0.4.0`, Windows, loopback, with `exec_python: false`. Redshift renderer/module/AOV discovery succeeded, but node-template discovery rejected an unresolved asset-type declaration and several light aliases referenced missing symbols. No test document was created. Subsequent source fixes correct those SDK boundaries and pass offline regression; they require another reviewed install and manual restart before live testing. See the [integration record](./reports/2026-09-05-redshift-integration.md).
 
 ## Inherited tool catalog
 
-All tools in [TOOLS.md](./TOOLS.md), including advanced modeling, mesh, document I/O outside the foundation save-copy path, node materials, Xpresso, animation, layers, MoGraph, plugin options, render operations, and Python escape hatches, remain inherited/unverified on Cinema 4D 2025.3.2 until a dedicated live test records evidence for them.
+All tools in [TOOLS.md](./TOOLS.md) outside the foundation boundary and the explicitly offline-tested Redshift boundary—including advanced modeling, mesh, document I/O outside the foundation save-copy path, generic node materials, Xpresso, animation, layers, MoGraph, plugin options, generic render operations, and Python escape hatches—remain inherited/unverified on Cinema 4D 2025.3.2 until a dedicated live test records evidence for them.
 
 `exec_python` is additionally disabled by default and requires `C4D_MCP_ENABLE_EXEC_PYTHON=1` on both the Node and Cinema 4D processes. Creating or editing Python-bearing plugin types requires the independent `C4D_MCP_ENABLE_PYTHON_OPS=1` opt-in on the Cinema 4D side. Enabling either gate changes the security posture and must be recorded with any result.
 
@@ -52,6 +69,7 @@ A release claim requires all of the following evidence from the candidate commit
 2. `npm audit --audit-level=high` exits `0`. This gate is satisfied for lockfile commit `d096c18`; rerun it after any dependency or lockfile change.
 3. The installer dry-run target is reviewed before an explicit install.
 4. `npm run test:live:2025` exits `0` against Cinema 4D 2025.3.2 with no skipped foundation test.
-5. The recorded evidence names the commit, Node version, Cinema 4D build, bridge version, relevant environment gates, command exit codes, and skipped-test count.
+5. `npm run test:live:redshift:2025` exits `0` with token authentication enabled, exact Redshift capabilities, one temporary non-active document, verified Beauty/AOV output, zero-write failure coverage, state restoration, and no skipped test.
+6. The recorded evidence names the commit, Node version, Cinema 4D build, bridge version, Redshift capability snapshot, relevant environment gates, command exit codes, and skipped-test count.
 
-An ordinary `npm test` can skip bridge-dependent E2E suites and must never be used as the sole live-compatibility signal.
+Ordinary `npm test` runs unit tests only, never connects to Cinema 4D, and must never be used as the sole live-compatibility signal.

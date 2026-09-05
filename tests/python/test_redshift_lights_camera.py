@@ -16,6 +16,7 @@ PLUGIN_ROOT = REPO_ROOT / "plugin" / "cinema4d_mcp_bridge"
 class FakeDescLevel:
     def __init__(self, identifier, dtype, creator):
         self.identifier = identifier
+        self.id = identifier
         self.dtype = dtype
         self.creator = creator
 
@@ -23,6 +24,12 @@ class FakeDescLevel:
 class FakeDescID:
     def __init__(self, *levels):
         self.levels = levels
+
+    def __getitem__(self, index):
+        return self.levels[index]
+
+    def GetDepth(self):
+        return len(self.levels)
 
 
 class FakeObject:
@@ -70,6 +77,9 @@ class FakeObject:
     def __getitem__(self, key):
         return self.params[key]
 
+    def GetDescription(self, _flags):
+        return [({}, FakeDescID(FakeDescLevel(304, 1036765, self.type_id)), None)]
+
 
 class FakeObjectDocument:
     def __init__(self, document):
@@ -116,12 +126,17 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         self.c4d.Olight = 7003
         self.c4d.UNDOTYPE_NEW = 100
         self.c4d.UNDOTYPE_CHANGE = 101
-        self.c4d.DTYPE_BASECONTAINER = 200
-        self.c4d.DTYPE_FILENAME = 201
+        self.c4d.DTYPE_STRING = 202
+        self.c4d.DESCFLAGS_DESC_0 = 0
         self.c4d.REDSHIFT_LIGHT_TYPE = 300
-        self.c4d.REDSHIFT_LIGHT_COLOR = 301
-        self.c4d.REDSHIFT_LIGHT_INTENSITY = 302
-        self.c4d.REDSHIFT_LIGHT_EXPOSURE = 303
+        self.c4d.REDSHIFT_LIGHT_PHYSICAL_COLOR = 301
+        self.c4d.REDSHIFT_LIGHT_PHYSICAL_INTENSITY = 302
+        self.c4d.REDSHIFT_LIGHT_PHYSICAL_EXPOSURE = 303
+        self.c4d.REDSHIFT_LIGHT_DOME_COLOR = 311
+        self.c4d.REDSHIFT_LIGHT_DOME_MULTIPLIER = 312
+        self.c4d.REDSHIFT_LIGHT_DOME_EXPOSURE0 = 313
+        self.c4d.REDSHIFT_LIGHT_PHYSICALSUN_TINT = 321
+        self.c4d.REDSHIFT_LIGHT_PHYSICALSUN_MULTIPLIER = 322
         self.c4d.REDSHIFT_LIGHT_DOME_TEX0 = 304
         self.c4d.REDSHIFT_FILE_PATH = 305
         self.c4d.RSCAMERAOBJECT_EXPOSURE = 401
@@ -201,8 +216,11 @@ class RedshiftLightsCameraTest(unittest.TestCase):
 
     def test_creates_every_runtime_light_type_with_exact_type_and_undo(self):
         expected_types = {
-            name: getattr(self.c4d, f"REDSHIFT_LIGHT_TYPE_{name.upper()}")
-            for name in ("area", "dome", "sun", "point", "spot")
+            "area": self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICAL_AREA,
+            "dome": self.c4d.REDSHIFT_LIGHT_TYPE_DOME,
+            "sun": self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICALSUN,
+            "point": self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICAL_POINT,
+            "spot": self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICAL_SPOT,
         }
 
         for light_type, expected in expected_types.items():
@@ -233,7 +251,7 @@ class RedshiftLightsCameraTest(unittest.TestCase):
                 )
 
     def test_rejects_an_unavailable_requested_light_type_before_insertion(self):
-        delattr(self.c4d, "REDSHIFT_LIGHT_TYPE_SUN")
+        delattr(self.c4d, "REDSHIFT_LIGHT_TYPE_PHYSICALSUN")
 
         with self.assertRaisesRegex(RuntimeError, "sun.*unsupported"):
             self.handle_rs_create_light({"name": "RS_Sun", "type": "sun"})
@@ -241,7 +259,7 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         self.assertEqual(self.document_map[self.main_document].inserted_objects, [])
 
     def test_rejects_missing_requested_light_property_before_insertion_and_restores_document(self):
-        delattr(self.c4d, "REDSHIFT_LIGHT_EXPOSURE")
+        delattr(self.c4d, "REDSHIFT_LIGHT_PHYSICAL_EXPOSURE")
 
         with self.assertRaisesRegex(RuntimeError, "exposure.*unsupported"):
             self.handle_rs_create_light(
@@ -282,17 +300,19 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         light = self.target.objects[0]
         self.assertEqual(light.position, (1.0, 2.0, 3.0))
         self.assertEqual(light.rotation, (0.1, 0.2, 0.3))
-        self.assertEqual(light.params[self.c4d.REDSHIFT_LIGHT_COLOR], (0.1, 0.2, 0.3))
+        self.assertEqual(light.params[self.c4d.REDSHIFT_LIGHT_DOME_COLOR], (0.1, 0.2, 0.3))
+        self.assertEqual(light.params[self.c4d.REDSHIFT_LIGHT_DOME_MULTIPLIER], 2.0)
+        self.assertEqual(light.params[self.c4d.REDSHIFT_LIGHT_DOME_EXPOSURE0], -1.0)
         texture_descid = next(key for key in light.params if isinstance(key, FakeDescID))
         self.assertEqual(
             [(level.identifier, level.dtype, level.creator) for level in texture_descid.levels],
             [
                 (
                     self.c4d.REDSHIFT_LIGHT_DOME_TEX0,
-                    self.c4d.DTYPE_BASECONTAINER,
+                    1036765,
                     self.c4d.Orslight,
                 ),
-                (self.c4d.REDSHIFT_FILE_PATH, self.c4d.DTYPE_FILENAME, self.c4d.Orslight),
+                (self.c4d.REDSHIFT_FILE_PATH, self.c4d.DTYPE_STRING, 0),
             ],
         )
         self.assertEqual(light.params[texture_descid], "C:/textures/dome.exr")
@@ -307,6 +327,37 @@ class RedshiftLightsCameraTest(unittest.TestCase):
                 {"name": "RS_Dome", "type": "dome", "dome_texture": "C:/missing/dome.exr"}
             )
         self.assertEqual(self.document_map[self.main_document].inserted_objects, [])
+
+    def test_missing_dome_description_rejects_before_insertion(self):
+        with (
+            patch.object(FakeObject, "GetDescription", return_value=[]),
+            self.assertRaisesRegex(RuntimeError, "runtime texture description unavailable"),
+        ):
+            self.handle_rs_create_light(
+                {
+                    "document_name": "target",
+                    "name": "RS_Dome",
+                    "type": "dome",
+                    "dome_texture": "C:/textures/dome.exr",
+                }
+            )
+        self.assertEqual(self.target.inserted_objects, [])
+        self.assertEqual(self.target.undo_events, [])
+        self.assertIs(self.document_state.active, self.main_document)
+
+    def test_sun_uses_its_parameters_and_rejects_unavailable_exposure(self):
+        result = self.handle_rs_create_light(
+            {"document_name": "target", "name": "Sun", "type": "sun", "intensity": 3}
+        )
+        self.assertEqual(result["applied"], ["intensity"])
+        self.assertEqual(
+            self.target.objects[0].params[self.c4d.REDSHIFT_LIGHT_PHYSICALSUN_MULTIPLIER], 3
+        )
+        with self.assertRaisesRegex(RuntimeError, "exposure unsupported"):
+            self.handle_rs_create_light(
+                {"document_name": "target", "name": "InvalidSun", "type": "sun", "exposure": 1}
+            )
+        self.assertEqual(len(self.target.inserted_objects), 1)
 
     def test_light_updates_only_an_exact_redshift_object_and_rejects_duplicates(self):
         wrong_type = self.add_object("RS_Area", self.c4d.Olight)
@@ -323,7 +374,7 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         self.assertEqual(self.target.inserted_objects, [])
 
         light = self.add_object("RS_Update", self.c4d.Orslight)
-        light.params[self.c4d.REDSHIFT_LIGHT_TYPE] = self.c4d.REDSHIFT_LIGHT_TYPE_AREA
+        light.params[self.c4d.REDSHIFT_LIGHT_TYPE] = self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICAL_AREA
         with self.assertRaisesRegex(ValueError, "type.*does not match"):
             self.handle_rs_create_light(
                 {
@@ -351,9 +402,9 @@ class RedshiftLightsCameraTest(unittest.TestCase):
         self.assertIs(light, self.target.objects[-1])
         self.assertEqual(light.GetType(), self.c4d.Orslight)
         self.assertEqual(
-            light.params[self.c4d.REDSHIFT_LIGHT_TYPE], self.c4d.REDSHIFT_LIGHT_TYPE_AREA
+            light.params[self.c4d.REDSHIFT_LIGHT_TYPE], self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICAL_AREA
         )
-        self.assertEqual(light.set_calls, [(self.c4d.REDSHIFT_LIGHT_INTENSITY, 3.0)])
+        self.assertEqual(light.set_calls, [(self.c4d.REDSHIFT_LIGHT_PHYSICAL_INTENSITY, 3.0)])
         self.assertEqual(
             self.target.undo_events[-3:], ["start", ("add", self.c4d.UNDOTYPE_CHANGE, light), "end"]
         )
@@ -412,7 +463,7 @@ class RedshiftLightsCameraTest(unittest.TestCase):
 
     def test_light_ends_undo_after_write_error(self):
         light = self.add_object("RS_Error", self.c4d.Orslight)
-        light.params[self.c4d.REDSHIFT_LIGHT_TYPE] = self.c4d.REDSHIFT_LIGHT_TYPE_AREA
+        light.params[self.c4d.REDSHIFT_LIGHT_TYPE] = self.c4d.REDSHIFT_LIGHT_TYPE_PHYSICAL_AREA
         light.raise_on_set = True
 
         with self.assertRaisesRegex(RuntimeError, "injected parameter failure"):

@@ -75,6 +75,8 @@ class FakeNodeTemplateRepository:
         self.calls: list[tuple[object, ...]] = []
 
     def FindAssets(self, *args):
+        if not args or not isinstance(args[0], FakeId):
+            raise TypeError("assetType expects Id, not the NodeTemplate declaration")
         self.calls.append(args)
         return self.assets
 
@@ -105,8 +107,18 @@ def make_c4d_runtime(
 
     c4d.EventAdd = event_add
     c4d.PLUGINTYPE_VIDEOPOST = 1
+    c4d.Orslight = 1036751
+    c4d.Orscamera = 1057516
+    c4d.REDSHIFT_LIGHT_TYPE = 10000
+    symbols = {
+        "area": "REDSHIFT_LIGHT_TYPE_PHYSICAL_AREA",
+        "dome": "REDSHIFT_LIGHT_TYPE_DOME",
+        "sun": "REDSHIFT_LIGHT_TYPE_PHYSICALSUN",
+        "point": "REDSHIFT_LIGHT_TYPE_PHYSICAL_POINT",
+        "spot": "REDSHIFT_LIGHT_TYPE_PHYSICAL_SPOT",
+    }
     for index, light_type in enumerate(light_types or {"area", "dome", "sun", "point", "spot"}, 1):
-        setattr(c4d, f"REDSHIFT_LIGHT_TYPE_{light_type.upper()}", index)
+        setattr(c4d, symbols[light_type], index)
     return c4d, documents, document_state, plugin_lookup
 
 
@@ -114,7 +126,9 @@ def make_maxon_runtime(asset_ids: tuple[str, ...]):
     repository = FakeNodeTemplateRepository(asset_ids)
     maxon = types.ModuleType("maxon")
     maxon.Id = FakeId
-    maxon.AssetTypes = types.SimpleNamespace(NodeTemplate="node-template")
+    maxon.AssetTypes = types.SimpleNamespace(
+        NodeTemplate=lambda: types.SimpleNamespace(GetId=lambda: FakeId("node-template"))
+    )
     maxon.AssetInterface = types.SimpleNamespace(GetUserPrefsRepository=lambda: repository)
     return maxon, repository
 

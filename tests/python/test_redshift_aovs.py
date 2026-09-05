@@ -86,6 +86,16 @@ class FakeAovDocument:
 
 
 class RedshiftAovsTest(unittest.TestCase):
+    def test_plural_sdk_symbols_expose_reflection_refraction_and_normal_aliases(self):
+        self.c4d.REDSHIFT_AOV_TYPE_REFLECTIONS = 9
+        self.c4d.REDSHIFT_AOV_TYPE_REFRACTIONS = 12
+        self.c4d.REDSHIFT_AOV_TYPE_NORMALS = 20
+        module = importlib.import_module("bridge.handlers.redshift.aovs")
+        aliases = module.aov_type_aliases()
+        self.assertEqual(aliases.get("reflection"), 9)
+        self.assertEqual(aliases.get("refraction"), 12)
+        self.assertEqual(aliases.get("normal"), 20)
+
     def setUp(self):
         self.c4d, self.documents, self.document_state, _ = make_c4d_runtime(
             document_names=["main"], plugins={RS_RENDERER_ID}

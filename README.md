@@ -8,7 +8,7 @@
 Let an LLM drive Cinema 4D. **mcp-c4d-2025** is a foundation fork of `mcp-cinema4d` that targets Cinema 4D 2025.3.2. It connects an MCP stdio client to the Python bridge running inside Cinema 4D so the model can inspect and edit a scene through typed tools.
 
 > [!IMPORTANT]
-> **The Cinema 4D 2025.3.2 foundation path is live-verified on Windows x64.** On 2026-08-08, the strict `npm run test:live:2025` suite completed with one passing test and no skips. This verifies only the documented connection/edit/undo/preview/save-copy path; the rest of the inherited tool catalog remains unverified unless explicitly listed in [Compatibility](./docs/COMPATIBILITY.md).
+> **The Cinema 4D 2025.3.2 foundation path is live-verified on Windows x64.** On 2026-08-08, the strict `npm run test:live:2025` suite completed with one passing test and no skips. This verifies only the documented connection/edit/undo/preview/save-copy path. The Redshift controls are offline-tested and require a successful `npm run test:live:redshift:2025` run before they can be called live-verified; the rest of the inherited catalog remains unverified unless explicitly listed in [Compatibility](./docs/COMPATIBILITY.md).
 
 **Good for:**
 
@@ -62,7 +62,7 @@ Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKE
 
 ## Tools
 
-65 tools across 16 groups are inherited from the existing implementation. Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
+76 tools across 17 groups are registered. Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
 
 | Group                            | Count | What's in it                                                                                                                                                                                                                       |
 | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,6 +77,9 @@ Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKE
 | Tag helpers · Animation          |   5   | `assign_material`; `list_tracks`, `get_keyframes`, `delete_keyframe`, `delete_track`.                                                                                                                                              |
 | Transforms · User data · MoGraph |   5   | `set_transform`; `add_user_data` / `list_user_data` / `remove_user_data`; `list_mograph_clones`.                                                                                                                                   |
 | Layers                           |   5   | Enumerate, create, assign, query, flag toggles (solo / view / render / locked / …).                                                                                                                                                |
+| Redshift                         |  11   | Capabilities; materials and PBR graphs; lights and camera; AOV list/upsert/remove/clear; RenderData configuration; synchronous Beauty + direct-AOV rendering.                                                                      |
+
+For a guarded Redshift workflow, call `rs_get_capabilities` first, then create or update materials, lights, and camera, configure AOVs and RenderData, and use `rs_render` last. Always pass the exact `document_name`. `rs_set_material_pbr` requires `replace_graph: true` before replacing an existing graph; `rs_clear_aovs` requires both the exact document name and `force: true`; `rs_render` is synchronous, requires `force: true`, and a client timeout does not cancel work already running inside Cinema 4D.
 
 ## Entity handles
 
@@ -103,7 +106,7 @@ The local installer accepts only a drive-letter absolute Cinema 4D 2025 preferen
 npm run install:c4d -- --dry-run
 ```
 
-If discovery is ambiguous, pass an explicit path such as `C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>`. Only `--install` copies files. If the destination already exists, it is moved to a sibling `cinema4d_mcp_bridge.backup-<UTC_TIMESTAMP>` directory before the new copy is created. See [Codex setup](./docs/CODEX_SETUP.md#install-the-bridge) for the reviewed install and rollback sequence.
+If discovery is ambiguous, pass an explicit path such as `C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>`. Only `--install` copies files. If the destination already exists, it is moved into `<PREFERENCE>\mcp_bridge_backups\cinema4d_mcp_bridge.backup-<UTC_TIMESTAMP>` before the new copy is created. Backups stay outside `plugins` so Cinema 4D cannot load their plugin entrypoints. See [Codex setup](./docs/CODEX_SETUP.md#install-the-bridge) for the reviewed install and rollback sequence.
 
 ## Configuration
 
@@ -157,7 +160,7 @@ Still stuck? Open an [issue](https://github.com/kumoproductions/mcp-cinema4d/iss
 - **`list_graph_node_assets` can return an empty list** on builds where the Maxon asset repository doesn't expose node-template assets through the usual query path. The tool still returns `supported: true` with shape-correct output; treat an empty `assets` array as "discovery unavailable on this C4D build" and pass `$type` asset ids you already know (e.g. from `list_graph_nodes` on an existing material).
 - **Node material friendly names vary.** `apply_graph_description` accepts the declarative `$type` strings documented by Maxon (e.g. `"Standard Material"`), but the resolver varies between 2024 / 2025 / 2026 builds — when in doubt, pass the fully-qualified asset id returned by `list_graph_node_assets` / `list_graph_nodes` instead.
 - **`exec_python` is the only way to seed classical-shader fixtures.** A handful of E2E tests (for `dump_shader`) need to build a shader tree before asserting on it, so they skip cleanly when `C4D_MCP_ENABLE_EXEC_PYTHON` isn't set on both sides. The tools themselves don't require `exec_python`.
-- **No broad support claim is made.** The strict foundation suite is the only 2025 release gate currently defined, and even a passing run verifies only its documented path on the exact runtime tested. See [Compatibility](./docs/COMPATIBILITY.md).
+- **No broad support claim is made.** The foundation path is live-verified, while the Redshift tools remain offline-tested until the separate strict `test:live:redshift:2025` gate passes on the installed candidate. Each gate verifies only its documented path on the exact runtime tested. See [Compatibility](./docs/COMPATIBILITY.md).
 
 ## Contributing
 
