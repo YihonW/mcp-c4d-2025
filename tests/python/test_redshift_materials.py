@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from redshift_fakes import make_c4d_runtime, make_maxon_runtime, make_redshift_runtime
+from redshift_fakes import FakeId, make_c4d_runtime, make_maxon_runtime, make_redshift_runtime
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = REPO_ROOT / "plugin" / "cinema4d_mcp_bridge"
@@ -144,7 +144,7 @@ class FakeGraphNode:
 
     def GetValue(self, attribute):
         if attribute == "net.maxon.node.attribute.assetid":
-            return self.asset_id
+            return (FakeId(self.asset_id), FakeId("1.0")) if self.asset_id else None
         return None
 
     def GetInputs(self):
@@ -178,10 +178,7 @@ class FakeGraph:
 
     @property
     def nodes(self):
-        return [
-            {"id": node.GetId(), "asset_id": node.GetValue("net.maxon.node.attribute.assetid")}
-            for node in self.root.children
-        ]
+        return [{"id": node.GetId(), "asset_id": node.asset_id} for node in self.root.children]
 
     def GetRoot(self):
         return self.root
@@ -222,10 +219,7 @@ class FakeGraph:
     def Clone(self):
         if not self.clone_supported:
             raise RuntimeError("clone unavailable")
-        return [
-            (node.GetId(), node.GetValue("net.maxon.node.attribute.assetid"))
-            for node in self.root.children
-        ]
+        return [(node.GetId(), node.asset_id) for node in self.root.children]
 
     def Restore(self, snapshot):
         if self.restore_raises:
@@ -421,6 +415,28 @@ class RedshiftMaterialsTest(unittest.TestCase):
             )
         self.assertIsNone(material.graph)
         self.assertEqual(self.graph_description.calls, [])
+
+    def test_graph_readers_decode_sdk_asset_id_and_version(self):
+        graph = FakeGraph(FakeMaterial("RS_Mat"))
+        redshift_materials = importlib.import_module("bridge.handlers.redshift.materials")
+        node_materials = importlib.import_module("bridge.handlers.node_materials")
+        for read_nodes in (redshift_materials._graph_nodes, node_materials._collect_nodes):
+            with self.subTest(reader=read_nodes.__name__):
+                nodes = {entry["id"]: entry["asset_id"] for entry in read_nodes(graph)}
+                self.assertEqual(nodes["standard"], NODE_ASSETS["standard"])
+                self.assertEqual(nodes["output"], NODE_ASSETS["output"])
+
+    def test_runtime_ports_use_asset_id_without_version(self):
+        materials = importlib.import_module("bridge.handlers.redshift.materials")
+        for asset_id, port_id, direction in (
+            (NODE_ASSETS["standard"], "#~.refl_roughness", "in"),
+            (NODE_ASSETS["texture"], "#~.tex0/path", "in"),
+            (NODE_ASSETS["texture"], "#~.outcolor", "out"),
+        ):
+            with self.subTest(asset_id=asset_id, port_id=port_id):
+                node = FakeGraphNode("instance", asset_id)
+                port = materials._runtime_port(node, port_id, direction)
+                self.assertTrue(port.IsValid())
 
     def test_creates_a_material_in_the_requested_document_and_records_undo(self):
         result = self.handle_rs_create_material({"document_name": "user", "name": "RS_Mat"})

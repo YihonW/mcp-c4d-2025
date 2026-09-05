@@ -121,6 +121,8 @@ def _require_pbr_node_assets() -> None:
 
 
 def _graph_nodes(graph) -> list[dict[str, object]]:
+    from ..node_materials import _node_asset_id
+
     nodes: list[dict[str, object]] = []
     seen: set[str] = set()
 
@@ -133,7 +135,7 @@ def _graph_nodes(graph) -> list[dict[str, object]]:
             return
         seen.add(node_id)
         try:
-            asset_id = str(node.GetValue("net.maxon.node.attribute.assetid") or "")
+            asset_id = _node_asset_id(node)
         except Exception:
             asset_id = ""
         nodes.append({"id": node_id, "asset_id": asset_id, "node": node})
@@ -179,7 +181,9 @@ def _texture_input(value: object, channel: str) -> tuple[str, str]:
 
 
 def _runtime_port(node, port_id: str, direction: str):
-    asset_id = str(node.GetValue("net.maxon.node.attribute.assetid") or "")
+    from ..node_materials import _node_asset_id
+
+    asset_id = _node_asset_id(node)
     if not asset_id or not port_id.startswith("#~."):
         raise RuntimeError(
             f"required runtime port unavailable: {port_id!r}; refusing graph mutation"

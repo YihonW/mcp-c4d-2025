@@ -60,9 +60,27 @@ Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
 
 ## 下一次真实验证
 
-用户可在离线开发期间正常使用 C4D。当前修正版已安装，等待用户手动启动。先只读验证 runtime/security/Redshift capabilities；全部符合后，在用户暂停场景操作的时间内依次执行 foundation 和 Redshift 两个严格测试。每个测试各使用一个临时工程，串行执行并清理，不运行全部历史 E2E。
+用户可在离线开发期间正常使用 C4D。20:38 安装版已完成下述真实检查；最新的节点 ID 修复仍是源码，未替换正在运行的插件。等用户方便保存退出后，安装最新修复并由用户手动启动。先只读验证 runtime/security/Redshift capabilities，再在用户暂停场景操作的时间内运行严格 Redshift 测试；仍只使用一个临时工程并清理，不运行全部历史 E2E。
 
 只有两套严格测试通过、零跳过、输出文件有效且工程列表/焦点恢复后，才能更新 compatibility 中对应的真实验证状态。未来的“全控制”扩展仍需按实际 SDK 能力逐项实现和验证。
+
+## 启动后真实验证：2026-09-05 20:41–20:43（北京时间）
+
+- 已加载版本的源码来自 `a59a10a`，本次未改变配置或安全开关。C4D `2025302` / `2025.3.2`、Windows、Python `3.11.4`、bridge `0.4.0`、loopback、token required、`exec_python: false` 均符合预期。
+- `rs_get_capabilities` 只读通过：929 个节点模板、Area/Dome/Sun/Point/Spot 五类灯光、8 个 AOV 别名，以及 renderer/module/material/camera/render 支持均返回可用。这不等同于所有写操作或渲染已经通过。
+- 原有工程为活动的“未标题 2”和非活动的 `HX_C04_0905_V8.c4d`。20:41:48 的 foundation 尝试被空白活动工程保护拒绝，退出码 1，未插入工程。没有为绕过保护而修改空白场景或使用 `make_active: true`。
+- 明确告知用户后，临时切到已打开的非空 `HX_C04_0905_V8.c4d`。20:42:31 的 `npm run test:live:2025` 通过：1 passed、0 skipped、exit 0，总用时 3.41 秒。创建、变换、读回、撤销、64×64 预览、另存副本和单工程清理均通过。
+- 20:42:46 的 `npm run test:live:redshift:2025` 失败：1 failed、0 skipped、exit 1，总用时 3.13 秒。临时工程中对象和材质创建已返回成功，随后 `rs_set_material_pbr` 报 `Standard Material node not found in Redshift graph`。未执行正式渲染，不能宣称 PBR、灯光、摄像机或 Beauty/AOV 流程通过。
+- 两次真正插入的测试工程均已清理（串行各一个），两份原工程的名称、路径、顺序保持不变；最后切回“未标题 2”，document state 与开始时一致。没有关闭或保存用户工程。已通知用户可以恢复正常工作，此后只做离线开发。
+
+## 节点 ID 修复与离线复验（尚未安装）
+
+Maxon 官方示例使用 `node.GetValue("net.maxon.node.attribute.assetid")[0]` 取得 ID；SDK 属性是 `(ID, version)`，原实现却对整组值调用 `str()`。将 fake 改为两个 `FakeId` 的 tuple 后，复现了同样的标准材质匹配失败，也暴露了端口路径错误。现在共享 `_node_asset_id` 提取 ID，用于通用节点列表、Redshift 节点匹配和端口定位；缺失值仍按空 ID 处理。未改变已有材质图的重建策略，也未重装或热加载正在运行的插件。
+
+- 材质回归 23 项通过；全部 Python 回归 95 项通过；TypeScript 单元测试 73 项通过，两个 live 标志关闭且测试端口为 65534。
+- TypeScript 类型检查、lint、已跟踪文件的格式检查、45 个已跟踪 Python 文件的 Ruff lint/format、构建与工具目录检查通过。
+- 主目录 `npm run check` 的全目录格式检查被用户未跟踪目录 `.codex_ref_video1/labels/` 中的 8 个 JSON 文件阻断；全目录 Ruff 另报告该目录中的两个原有 Python 脚本导入排序问题。未格式化或修改这些用户文件；不能把本次完整 `npm run check` 宣称为通过。
+- 上述新回归不连接 C4D，不作为最新源码真实兼容性证据。下一次真实测试仍待安装、手动重启和用户暂停编辑的窗口。
 
 ## 依据
 
@@ -71,4 +89,5 @@ Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
 - [Maxon 2025.3 AssetRepository](https://developers.maxon.net/docs/py/2025_3_0/modules/maxon_generated/frameworks/asset/interface/maxon.AssetRepositoryInterface.html)：资产查询参数。
 - [Maxon 2025.3 GraphDescription](https://developers.maxon.net/docs/py/2025_3_0/modules/maxon_generated/frameworks/nodes/interface/maxon.GraphDescription.html)：element 与 name 参数，以及取得缺失 graph 时会创建的语义。
 - [Maxon Dome 贴图参数讨论](https://developers.maxon.net/forum/topic/14172/setting-bitmap-in-redshift-dome-light)：RSFILE 复合参数的实际 datatype 和 STRING 子通道。
+- [Maxon 节点与贴图路径示例](https://developers.maxon.net/topic/15190/get-value-of-texture-node-filepath-port)：SDK 专员示例中的 `(asset ID, version)` 取值、节点遍历和纹理路径端口。
 - [OpenAI MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)：STDIO command/args/env_vars 和 tool timeout。按 OpenAI Docs 核对后保留原启动路径与 token 转发，仅补足渲染等待时间；原配置已备份为 `C:\Users\Yihong\.codex\config.toml.backup-c4d-render-20260905`。
