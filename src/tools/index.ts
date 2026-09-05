@@ -52,6 +52,17 @@ import { removeUserDataTool } from "./remove-user-data.js";
 import { removeXpressoNodeTool } from "./remove-xpresso-node.js";
 import { renderTool } from "./render.js";
 import { resetSceneTool } from "./reset-scene.js";
+import { rsGetCapabilitiesTool } from "./rs-get-capabilities.js";
+import { rsCreateMaterialTool } from "./rs-create-material.js";
+import { rsClearAovsTool } from "./rs-clear-aovs.js";
+import { rsConfigureRenderTool } from "./rs-configure-render.js";
+import { rsCreateLightTool } from "./rs-create-light.js";
+import { rsSetCameraTool } from "./rs-set-camera.js";
+import { rsSetMaterialPbrTool } from "./rs-set-material-pbr.js";
+import { rsListAovsTool } from "./rs-list-aovs.js";
+import { rsRemoveAovTool } from "./rs-remove-aov.js";
+import { rsRenderTool } from "./rs-render.js";
+import { rsUpsertAovTool } from "./rs-upsert-aov.js";
 import { sampleTransformTool } from "./sample-transform.js";
 import { saveDocumentTool } from "./save-document.js";
 import { setActiveDocumentTool } from "./set-active-document.js";
@@ -164,6 +175,18 @@ export const ALL_TOOLS: AnyTool[] = [
   setLayerFlagsTool,
   // Document state
   getDocumentStateTool,
+  // Redshift
+  rsGetCapabilitiesTool,
+  rsCreateMaterialTool,
+  rsCreateLightTool,
+  rsSetCameraTool,
+  rsSetMaterialPbrTool,
+  rsListAovsTool,
+  rsUpsertAovTool,
+  rsRemoveAovTool,
+  rsClearAovsTool,
+  rsConfigureRenderTool,
+  rsRenderTool,
 ];
 
 /**

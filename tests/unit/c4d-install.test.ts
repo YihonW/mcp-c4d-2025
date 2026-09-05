@@ -317,26 +317,50 @@ describe("install-c4d-plugin CLI", () => {
     }
   });
 
-  test("backs up the complete old target before copying the new bridge", () => {
+  test("backs up the complete old target outside the plugin scan directory", () => {
     const sandbox = createInstallerSandbox();
     mkdirSync(path.join(sandbox.destination, "nested"), { recursive: true });
     writeFileSync(path.join(sandbox.destination, "old.txt"), "old bridge content", "utf8");
     writeFileSync(path.join(sandbox.destination, "nested", "state.txt"), "old state", "utf8");
+    writeFileSync(path.join(sandbox.destination, "old.pyp"), "old plugin entrypoint", "utf8");
     const oldTree = snapshotTree(sandbox.destination);
     const sourceTree = snapshotTree(sandbox.source);
 
     try {
       const result = runInstaller(sandbox, ["--install", "--preference", sandbox.preference]);
       const pluginRoot = path.dirname(sandbox.destination);
-      const backupNames = readdirSync(pluginRoot).filter((name) =>
+      const backupRoot = path.join(sandbox.preference, "mcp_bridge_backups");
+      expect(result.status).toBe(0);
+      expect(readdirSync(pluginRoot)).toEqual(["cinema4d_mcp_bridge"]);
+      const backupNames = readdirSync(backupRoot).filter((name) =>
         name.startsWith("cinema4d_mcp_bridge.backup-"),
       );
 
       expect(result.status).toBe(0);
       expect(backupNames).toHaveLength(1);
-      expect(snapshotTree(path.join(pluginRoot, backupNames[0]))).toEqual(oldTree);
+      expect(snapshotTree(path.join(backupRoot, backupNames[0]))).toEqual(oldTree);
       expect(snapshotTree(sandbox.destination)).toEqual(sourceTree);
       expect(existsSync(path.join(sandbox.destination, "old.txt"))).toBe(false);
+    } finally {
+      rmSync(sandbox.root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a backup directory junction before any filesystem write", () => {
+    const sandbox = createInstallerSandbox();
+    mkdirSync(sandbox.destination, { recursive: true });
+    writeFileSync(path.join(sandbox.destination, "old.pyp"), "old plugin", "utf8");
+    symlinkSync(
+      path.dirname(sandbox.destination),
+      path.join(sandbox.preference, "mcp_bridge_backups"),
+      "junction",
+    );
+    const before = snapshotTree(sandbox.root);
+    try {
+      const result = runInstaller(sandbox, ["--install", "--preference", sandbox.preference]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/backup.*reparse|backup.*real path/i);
+      expect(snapshotTree(sandbox.root)).toEqual(before);
     } finally {
       rmSync(sandbox.root, { recursive: true, force: true });
     }

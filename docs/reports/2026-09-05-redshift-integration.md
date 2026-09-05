@@ -1,0 +1,66 @@
+# Redshift 集成记录：2026-09-05
+
+本记录区分已安装版本、随后完成的源码修复和真实验证。Redshift 生产流程尚未通过完整真实测试，不应宣称全部控制已经可用。
+
+## 已完成
+
+- 11 个 `rs_*` 工具已实现：能力查询、材质创建、PBR 参数/贴图、灯光、摄像机、AOV 查询/增改/删除/清空、渲染设置与正式渲染。工具目录共 76 项；默认关闭的 `exec_python` 不对客户端公开。
+- 普通 `npm test` 只执行单元测试；E2E 需要显式启用。严格 Redshift 测试只创建一个随机命名、非活动的临时工程，成功或异常均按唯一名称清理，并核对原工程列表和焦点。
+- Redshift 单项测试等待时间为 1920 秒，容纳正式渲染请求的 1800 秒等待；Codex 的 `cinema4d` 配置增加 `tool_timeout_sec = 1860`。超时不能视为渲染取消。
+- 安装备份改存于所选 preference 的 `mcp_bridge_backups`，位于 `plugins` 之外。新增测试覆盖完整备份、插件扫描目录无残留和备份 junction 拒绝。
+- 依赖仅在现有范围内更新 `fast-uri` 3.1.5 → 3.1.7、`qs` 6.15.3 → 6.16.0。
+
+## 安装与只读运行结果
+
+已审阅 dry-run，确认 C4D 完全退出后安装当时的候选插件：
+
+```text
+目标：C:\Users\Yihong\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_789E552B\plugins\cinema4d_mcp_bridge
+备份：C:\Users\Yihong\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_789E552B\mcp_bridge_backups\cinema4d_mcp_bridge.backup-2026-09-05T10-23-02.616Z
+当时安装源与目标：35/35 个已跟踪文件 SHA-256 相同
+```
+
+三个 2026-08-08 旧备份（12-14-56.895Z、12-20-23.163Z、12-56-05.415Z）已完整迁到同一 `mcp_bridge_backups` 目录，各 54 个文件，迁移前后哈希一致。没有删除备份，`plugins` 内旧备份数为 0。
+
+用户手动启动后，`ping`、`get_document_state`、`get_capabilities`、`list_documents` 通过；运行时为 C4D `2025302` / `2025.3.2`、Python `3.11.4`、Windows、bridge `0.4.0`、loopback、token required、`exec_python: false`。当时有一个名为“未标题 1”的活动工程。
+
+通过现有 `batch`（`undo_group: false`）读取 `rs_get_capabilities`：Redshift renderer `1036219`、module、AOV API 可用；资产类型传参错误导致节点查询失败，Area 等灯光常量名称不正确。检查在创建任何工程前停止。本轮没有执行真实场景写入或渲染。
+
+## 只读检查后完成的源码修复
+
+- 资产查询使用 `AssetTypes.NodeTemplate().GetId()`，fake 仓库现在拒绝 declaration 类型参数，能复现真实报错。
+- 灯光类型采用安装版 `orslight.h` 中的 `PHYSICAL_AREA`、`PHYSICAL_POINT`、`PHYSICAL_SPOT`、`PHYSICALSUN` 和 `DOME` 符号；Physical、Dome、Sun 分别使用各自参数。Sun 无直接 exposure 参数时明确拒绝。
+- Dome 贴图外层 RSFILE 数据类型从对象运行时 description 读取，内层路径使用 STRING；不再使用 BaseContainer/Filename 类型。缺失 description 时在插入对象前报错。
+- 新材质的名称通过 SDK 的 `name` 关键字传入，不再把字符串作为 `element`。PBR 更新只取得已有 node material graph，缺失时拒绝，不隐式创建图。
+- 图遍历从根节点的子节点开始，兼容 ID 为空的根节点。
+- AOV reflection/refraction/normal 对应 SDK 实际的 `REFLECTIONS` / `REFRACTIONS` / `NORMALS` 常量。
+
+上述源码修复尚未安装到正在运行的 C4D；35/35 哈希匹配记录只适用于本次首次安装时的候选，不代表当前修正版已经加载。
+
+## 离线验证
+
+Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
+
+| 命令                                                         | 结果                                                 |
+| ------------------------------------------------------------ | ---------------------------------------------------- |
+| `python -m unittest discover -s tests/python -p 'test_*.py'` | 93 通过，退出码 0                                    |
+| `npm test`                                                   | 73 通过，8 个文件，退出码 0                          |
+| `npm run check`                                              | TypeScript、lint、格式、Ruff、工具目录一致性通过     |
+| `npm run build`                                              | 通过（包含在 tools 文档检查中）                      |
+| `npm audit --audit-level=high`                               | 0 vulnerabilities，退出码 0                          |
+| 两个 live 标志关闭时运行 `tests/e2e/redshift-2025.test.ts`   | 1 个测试跳过，退出码 0，不连接；这不是 live 通过证据 |
+
+## 下一次真实验证
+
+用户可在离线开发期间正常使用 C4D。等用户保存并退出后，安装当前修正版，再由用户手动启动。先只读验证 runtime/security/Redshift capabilities；全部符合后，在用户暂停场景操作的时间内依次执行 foundation 和 Redshift 两个严格测试。每个测试各使用一个临时工程，串行执行并清理，不运行全部历史 E2E。
+
+只有两套严格测试通过、零跳过、输出文件有效且工程列表/焦点恢复后，才能更新 compatibility 中对应的真实验证状态。未来的“全控制”扩展仍需按实际 SDK 能力逐项实现和验证。
+
+## 依据
+
+- 本机 `C:\Program Files\Maxon Cinema 4D 2025\Redshift\res\description\orslight.h`、`drsfile.h`、`drsaov.h`。
+- [Maxon 插件结构](https://developers.maxon.net/docs/py/2024_4_0a/misc/pluginstructure.html)：插件目录下 `.pyp` 入口和目录层级。
+- [Maxon 2025.3 AssetRepository](https://developers.maxon.net/docs/py/2025_3_0/modules/maxon_generated/frameworks/asset/interface/maxon.AssetRepositoryInterface.html)：资产查询参数。
+- [Maxon 2025.3 GraphDescription](https://developers.maxon.net/docs/py/2025_3_0/modules/maxon_generated/frameworks/nodes/interface/maxon.GraphDescription.html)：element 与 name 参数，以及取得缺失 graph 时会创建的语义。
+- [Maxon Dome 贴图参数讨论](https://developers.maxon.net/forum/topic/14172/setting-bitmap-in-redshift-dome-light)：RSFILE 复合参数的实际 datatype 和 STRING 子通道。
+- [OpenAI MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)：STDIO command/args/env_vars 和 tool timeout。按 OpenAI Docs 核对后保留原启动路径与 token 转发，仅补足渲染等待时间；原配置已备份为 `C:\Users\Yihong\.codex\config.toml.backup-c4d-render-20260905`。

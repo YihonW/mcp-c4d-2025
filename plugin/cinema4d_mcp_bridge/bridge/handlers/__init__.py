@@ -99,6 +99,7 @@ from .node_materials import (
     handle_set_graph_port,
 )
 from .preview_render import handle_preview_render
+from .redshift import REDSHIFT_HANDLERS
 from .render_data import handle_create_render_data
 from .script import (
     handle_batch,
@@ -201,5 +202,7 @@ HANDLERS = {
     "set_xpresso_port": handle_set_xpresso_port,
     "remove_xpresso_node": handle_remove_xpresso_node,
 }
+
+HANDLERS.update(REDSHIFT_HANDLERS)
 
 __all__ = ["HANDLERS", "configure_security_snapshot"]

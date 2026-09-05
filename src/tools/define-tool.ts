@@ -18,7 +18,8 @@ export type ToolGroup =
   | "user-data"
   | "mograph"
   | "animation"
-  | "layers";
+  | "layers"
+  | "redshift";
 
 export type ToolSpec<S extends z.ZodRawShape> = {
   name: string;

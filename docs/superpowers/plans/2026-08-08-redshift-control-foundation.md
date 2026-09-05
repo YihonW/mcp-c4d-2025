@@ -195,7 +195,7 @@ export const rsGetCapabilitiesTool = defineTool({
 });
 ```
 
-In `tests/unit/redshift-tools.test.ts`, assert the tool is present in `ALL_TOOLS`, has group `redshift`, sends the exact command/timeout, and that `ALL_TOOLS.length` is `66` at this task boundary.
+In `tests/unit/redshift-tools.test.ts`, assert the tool is present in `ALL_TOOLS`, has group `redshift`, and sends the exact command/timeout. Do not assert the intermediate registry length; that would make unrelated future tool additions break this behavior test.
 
 - [ ] Run focused GREEN tests:
 
@@ -282,7 +282,7 @@ if graph is None:
 
 For a new material, locate the created material by exact name after the call and fail if it is not unique. Add the new material to the undo stack when Cinema 4D exposes an undo type for it; otherwise return `undo_supported:false`. Never call graph clear/delete commands.
 
-- [ ] Implement and register `src/tools/rs-create-material.ts`. Use `z.string().trim().min(1)` for names. Extend the TS test to assert `ALL_TOOLS.length === 67` and the exact request payload.
+- [ ] Implement and register `src/tools/rs-create-material.ts`. Use `z.string().trim().min(1)` for names. Extend the TS test to assert registration and the exact request payload without asserting the intermediate registry length.
 
 - [ ] Run focused GREEN plus the Task 1 regression:
 
@@ -387,7 +387,7 @@ Use ID-based or lazy-ID GraphDescription references, never English labels. The r
 
 - [ ] For `replace_graph:false`, query the existing Standard Material/output nodes and update only supplied channels, creating only the texture/helper nodes required for those channels. For `replace_graph:true`, validate everything first, snapshot the graph when the API exposes a clone/serialization route, clear and rebuild one Output -> Standard graph, and report rollback accurately. If the runtime cannot snapshot/recover graph state, reject replacement with a specific unsupported error instead of making an unprotected destructive edit.
 
-- [ ] Register `rs_set_material_pbr`, extend the TS test to expect `68` tools, and run GREEN:
+- [ ] Register `rs_set_material_pbr`, extend the TS test to verify registration and forwarding behavior, and run GREEN:
 
 ```powershell
 python -m unittest discover -s tests/python -p "test_redshift_materials.py" -v
@@ -509,7 +509,7 @@ CAMERA_PARAMETER_SYMBOLS = {
 
 Unlike lights, the camera result has `applied` and `unavailable` arrays: apply every available requested parameter, list unavailable exact names with reasons, and never substitute. Duplicate semantics match the design: absent name creates; unique existing requires `update_if_exists:true`; duplicates fail.
 
-- [ ] Register both tools, update the expected tool count to `70`, and run GREEN:
+- [ ] Register both tools, extend the TS test to verify registration and forwarding behavior, and run GREEN:
 
 ```powershell
 python -m unittest discover -s tests/python -p "test_redshift_lights_camera.py" -v
@@ -611,7 +611,7 @@ def _aov_record(aov, index: int) -> dict[str, Any]:
 
 Take `original = list(RendererGetAOVs(video_post))`, build a separate proposed list, and call `RendererSetAOVs` once. For update, require exactly one existing record matching normalized type and name. On failure, try restoring the original list and report/raise with rollback status.
 
-- [ ] Register both tools, set expected tool count to `72`, and run GREEN:
+- [ ] Register both tools, extend the TS test to verify registration and forwarding behavior, and run GREEN:
 
 ```powershell
 python -m unittest discover -s tests/python -p "test_redshift_aovs.py" -v
@@ -688,7 +688,7 @@ self.assertEqual(self.redshift.set_aov_calls, [])
 
 - [ ] Implement clear with `document_scope(document_name, required=True)` and force validation before capability probing can create a VideoPost. Clone each `RSAOV` when `GetClone`/`Clone` exists; otherwise serialize all safely writable fields. On exception, restore clones or reconstructed records and set rollback to `succeeded`, `partial`, or `unavailable`. On success return `rollback:"not_needed"`.
 
-- [ ] Register both tools, set expected tool count to `74`, and run GREEN:
+- [ ] Register both tools, extend the TS test to verify registration and forwarding behavior, and run GREEN:
 
 ```powershell
 python -m unittest discover -s tests/python -p "test_redshift_aovs.py" -v
@@ -764,7 +764,7 @@ Map formats exactly to Cinema 4D filter constants and the matching RenderData fi
 
 - [ ] On an error after a new RenderData was inserted, remove it. On an error updating an existing RenderData, copy the cloned data/VideoPost state back when supported and report the rollback outcome in the raised error. Never change the document's active RenderData as an error-recovery shortcut.
 
-- [ ] Register the tool, set expected tool count to `75`, and run GREEN:
+- [ ] Register the tool, extend the TS test to verify registration and forwarding behavior, and run GREEN:
 
 ```powershell
 python -m unittest discover -s tests/python -p "test_redshift_render.py" -v
@@ -827,7 +827,7 @@ rs_render({
 
 - [ ] Measure duration with `time.perf_counter()`. Return renderer ID/name, Beauty and AOV paths/sizes, warnings, and missing expected outputs. If the request eventually returns after an MCP-side timeout, preserve the actual render result; never emit “cancelled”.
 
-- [ ] Register the tool, set the final expected tool count to `76`, and run GREEN:
+- [ ] Register the tool, extend the TS test to verify registration and forwarding behavior, and run GREEN. The final catalog count remains a generated-document acceptance check in Task 9, not a unit-test change detector:
 
 ```powershell
 python -m unittest discover -s tests/python -p "test_redshift_render.py" -v

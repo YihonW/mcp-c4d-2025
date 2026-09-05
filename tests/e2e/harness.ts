@@ -58,6 +58,82 @@ type LiveSecurityExpectation = {
   execPython: boolean;
 };
 
+type RequiredRedshiftCapabilities = {
+  renderer: { supported: true; id: 1036219 };
+  module: { supported: true };
+  node_space: {
+    supported: true;
+    id: "com.redshift3d.redshift4c4d.class.nodespace";
+    node_template_count: number;
+  };
+  aov_api: { supported: true; aliases: Record<string, number> };
+  materials: { supported: true };
+  lights: {
+    supported: true;
+    types: { area: { supported: true }; dome: { supported: true } };
+  };
+  camera: { supported: true };
+  render: { supported: true };
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+/** Fail-fast policy used by the non-skippable Cinema 4D Redshift smoke command. */
+export function requireRedshiftCapabilities(
+  capabilities: unknown,
+): asserts capabilities is RequiredRedshiftCapabilities {
+  const root = asRecord(capabilities);
+  const renderer = asRecord(root.renderer);
+  if (renderer.supported !== true || renderer.id !== 1036219) {
+    throw new Error("Redshift renderer 1036219 must be supported");
+  }
+  if (asRecord(root.module).supported !== true) {
+    throw new Error("Redshift module must be supported");
+  }
+  const nodeSpace = asRecord(root.node_space);
+  if (
+    nodeSpace.supported !== true ||
+    nodeSpace.id !== "com.redshift3d.redshift4c4d.class.nodespace"
+  ) {
+    throw new Error("Redshift node_space identity must match the verified Redshift node space");
+  }
+  if (
+    typeof nodeSpace.node_template_count !== "number" ||
+    !Number.isInteger(nodeSpace.node_template_count) ||
+    nodeSpace.node_template_count <= 0
+  ) {
+    throw new Error("Redshift node_template_count must be a positive integer");
+  }
+  const aovApi = asRecord(root.aov_api);
+  if (aovApi.supported !== true) {
+    throw new Error("Redshift AOV API must include mutation support");
+  }
+  const aliases = asRecord(aovApi.aliases);
+  if (Object.keys(aliases).length === 0) {
+    throw new Error("Redshift AOV alias map must not be empty");
+  }
+  if (asRecord(root.materials).supported !== true) {
+    throw new Error("Redshift materials must be supported");
+  }
+  const lights = asRecord(root.lights);
+  if (lights.supported !== true) {
+    throw new Error("Redshift lights must be supported");
+  }
+  const lightTypes = asRecord(lights.types);
+  for (const type of ["area", "dome"] as const) {
+    if (asRecord(lightTypes[type]).supported !== true) {
+      throw new Error(`Redshift ${type} light must be supported`);
+    }
+  }
+  if (asRecord(root.camera).supported !== true) {
+    throw new Error("Redshift camera must be supported");
+  }
+  if (asRecord(root.render).supported !== true) {
+    throw new Error("Redshift render must be supported");
+  }
+}
+
 /** Fail-fast policy used by the non-skippable Cinema 4D 2025 smoke command. */
 export function requireLiveBridge(
   probe: BridgeProbeDecision,

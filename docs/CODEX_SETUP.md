@@ -3,7 +3,7 @@
 This guide runs the local checkout as a Codex STDIO MCP server and installs its Python bridge into a Cinema 4D 2025 preference directory.
 
 > [!IMPORTANT]
-> The documented foundation path is live-verified on Cinema 4D 2025.3.2 for Windows x64. The successful 2026-08-08 run covered connection, capabilities, isolated create/edit/read, undo, preview, save-copy, state preservation, and cleanup. Rerun `npm run test:live:2025` after code, plugin, Cinema 4D, or security-environment changes; do not infer compatibility for the remaining inherited tools from this bounded result.
+> The documented foundation path is live-verified on Cinema 4D 2025.3.2 for Windows x64. The successful 2026-08-08 run covered connection, capabilities, isolated create/edit/read, undo, preview, save-copy, state preservation, and cleanup. The Redshift controls are currently offline-tested only. Rerun `npm run test:live:2025` after code, plugin, Cinema 4D, or security-environment changes, and require a separate successful `npm run test:live:redshift:2025` run before promoting Redshift to live-verified.
 
 The Codex forms below follow the [official OpenAI MCP configuration](https://developers.openai.com/codex/mcp): a local STDIO command configured in Settings, through `codex mcp add`, or in `config.toml`.
 
@@ -62,7 +62,7 @@ npm run install:c4d -- --install
 npm run install:c4d -- --install --preference "C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>"
 ```
 
-The destination is `<PREFERENCE>\plugins\cinema4d_mcp_bridge`. If that directory already exists, the installer first moves it to the same `plugins` directory as `cinema4d_mcp_bridge.backup-<UTC_TIMESTAMP>`, then copies only `plugin\cinema4d_mcp_bridge` from this checkout.
+The destination is `<PREFERENCE>\plugins\cinema4d_mcp_bridge`. If that directory already exists, the installer first moves it to `<PREFERENCE>\mcp_bridge_backups\cinema4d_mcp_bridge.backup-<UTC_TIMESTAMP>`, then copies only `plugin\cinema4d_mcp_bridge` from this checkout. The backup directory must remain outside `plugins`: Cinema 4D scans plugin subdirectories for `.pyp` entrypoints, including copies in backup folders.
 
 After installation, start Cinema 4D 2025.3.2 and confirm its console reports:
 
@@ -103,6 +103,7 @@ Codex supports user-level `~/.codex/config.toml` and trusted-project `.codex/con
 
 ```toml
 [mcp_servers.cinema4d]
+tool_timeout_sec = 1860
 command = 'C:\Program Files\nodejs\node.exe'
 args = ['D:\ABSOLUTE\PATH\TO\mcp_c4d\dist\index.js']
 cwd = 'D:\ABSOLUTE\PATH\TO\mcp_c4d'
@@ -110,6 +111,8 @@ env_vars = ["C4D_MCP_TOKEN"]
 ```
 
 If `node.exe` is installed elsewhere, use its actual drive-letter absolute path.
+
+The 1860-second client timeout accommodates `rs_render`'s 1800-second bridge timeout. Reload the MCP connection after changing this setting or rebuilding its tool catalog. A timeout still does not cancel a synchronous Cinema 4D render. These options follow the [official MCP configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
 ## Safe defaults
 
@@ -120,6 +123,7 @@ Keep the first verification run in the default restricted posture:
 - `C4D_MCP_ENABLE_PYTHON_OPS` is unset on the Cinema 4D side, so creating or editing Python-bearing plugin types is rejected.
 - Keep Codex approval prompts enabled for mutating tools. The bridge is not a scene sandbox.
 - The strict foundation test creates a uniquely named, non-active temporary document, scopes edits to it, uses `save_document` with `copy: true`, and closes it during cleanup. It still requires a saved backup of user work before live testing.
+- The strict Redshift test also creates exactly one uniquely named, non-active temporary document. It checks capabilities, a material graph, area and dome lights, camera settings, AOVs, a 64×64 Beauty plus direct-AOV render, invalid-texture zero-write behavior, focus preservation, and exact cleanup.
 
 Use `get_capabilities` to inspect the reported runtime and security posture after connecting. A response alone does not establish the full foundation path.
 
@@ -134,16 +138,25 @@ npm run test:live:2025
 
 It sets `C4D_MCP_REQUIRE_LIVE=1`, so an unreachable bridge or a non-2025 runtime fails instead of silently skipping. A successful, no-skip run exercises ping, capabilities, temporary-document creation, create/edit/read, undo, preview rendering, save-copy, state preservation, and cleanup.
 
-Ordinary `npm test` is developer-friendly and may skip bridge-dependent E2E suites when the bridge is unavailable. It is not evidence of 2025 compatibility. Record the exact Cinema 4D build, command, exit code, skipped-test count, and foundation assertions when promoting a row in [Compatibility](./COMPATIBILITY.md) to live-verified.
+After installing the reviewed candidate, manually restarting Cinema 4D, saving all user work, and confirming the foundation gate, run the separate strict Redshift gate:
+
+```powershell
+Set-Location "D:\ABSOLUTE\PATH\TO\mcp_c4d"
+npm run test:live:redshift:2025
+```
+
+This command requires token authentication and the exact Redshift capability surface. It creates one non-active temporary document, performs a 64×64 Beauty and direct-AOV render, verifies an invalid texture request leaves the graph unchanged, and checks that the original active document and document list are restored. An unreachable bridge, missing capability, security mismatch, skipped test, render mismatch, or cleanup mismatch fails the gate.
+
+Ordinary `npm test` runs unit tests only and never connects to Cinema 4D. It is not evidence of 2025 compatibility. Record the exact Cinema 4D build, command, exit code, skipped-test count, security posture, and assertions when promoting a row in [Compatibility](./COMPATIBILITY.md) to live-verified.
 
 ## Backup and rollback
 
-The installer backup is a sibling of the installed plugin, for example:
+The installer backup is outside the plugin scan directory, for example:
 
 ```text
-C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>\plugins\cinema4d_mcp_bridge.backup-2026-08-08T01-02-03.456Z
+C:\Users\<WINDOWS_USER>\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_<INSTALL_ID>\mcp_bridge_backups\cinema4d_mcp_bridge.backup-2026-08-08T01-02-03.456Z
 ```
 
-To roll back, close Cinema 4D, verify the exact preference path, move the current `cinema4d_mcp_bridge` directory aside, and rename the selected `.backup-*` directory back to `cinema4d_mcp_bridge`. Keeping the current copy aside makes the rollback reversible. Start Cinema 4D only after the old directory name has been restored.
+To roll back, close Cinema 4D, verify the exact preference path, move the current `cinema4d_mcp_bridge` directory into `mcp_bridge_backups` under a new unique name, and move the selected backup to `<PREFERENCE>\plugins\cinema4d_mcp_bridge`. Keeping the current copy makes the rollback reversible. Start Cinema 4D only after restoration. For older installations, move any `plugins\cinema4d_mcp_bridge.backup-*` directories intact into `mcp_bridge_backups` while Cinema 4D is closed.
 
 For a first installation with no `.backup-*` directory, roll back by moving `cinema4d_mcp_bridge` out of the preference's `plugins` directory. Do not delete a backup until the restored bridge has been tested.
