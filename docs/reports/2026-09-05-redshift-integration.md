@@ -60,7 +60,7 @@ Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
 
 ## 下一次真实验证
 
-用户可在离线开发期间正常使用 C4D。20:38 安装版已完成下述真实检查；最新的节点 ID 修复仍是源码，未替换正在运行的插件。等用户方便保存退出后，安装最新修复并由用户手动启动。先只读验证 runtime/security/Redshift capabilities，再在用户暂停场景操作的时间内运行严格 Redshift 测试；仍只使用一个临时工程并清理，不运行全部历史 E2E。
+用户可在离线开发期间正常使用 C4D。20:38 安装版已完成下述真实检查；最新节点 ID 修复已于 20:52 在 C4D 完全退出时安装，等待用户手动启动。先只读验证 runtime/security/Redshift capabilities，再在用户暂停场景操作的时间内运行严格 Redshift 测试；仍只使用一个临时工程并清理，不运行全部历史 E2E。
 
 只有两套严格测试通过、零跳过、输出文件有效且工程列表/焦点恢复后，才能更新 compatibility 中对应的真实验证状态。未来的“全控制”扩展仍需按实际 SDK 能力逐项实现和验证。
 
@@ -73,7 +73,7 @@ Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
 - 20:42:46 的 `npm run test:live:redshift:2025` 失败：1 failed、0 skipped、exit 1，总用时 3.13 秒。临时工程中对象和材质创建已返回成功，随后 `rs_set_material_pbr` 报 `Standard Material node not found in Redshift graph`。未执行正式渲染，不能宣称 PBR、灯光、摄像机或 Beauty/AOV 流程通过。
 - 两次真正插入的测试工程均已清理（串行各一个），两份原工程的名称、路径、顺序保持不变；最后切回“未标题 2”，document state 与开始时一致。没有关闭或保存用户工程。已通知用户可以恢复正常工作，此后只做离线开发。
 
-## 节点 ID 修复与离线复验（尚未安装）
+## 节点 ID 修复与离线复验（安装前记录）
 
 Maxon 官方示例使用 `node.GetValue("net.maxon.node.attribute.assetid")[0]` 取得 ID；SDK 属性是 `(ID, version)`，原实现却对整组值调用 `str()`。将 fake 改为两个 `FakeId` 的 tuple 后，复现了同样的标准材质匹配失败，也暴露了端口路径错误。现在共享 `_node_asset_id` 提取 ID，用于通用节点列表、Redshift 节点匹配和端口定位；缺失值仍按空 ID 处理。未改变已有材质图的重建策略，也未重装或热加载正在运行的插件。
 
@@ -81,6 +81,13 @@ Maxon 官方示例使用 `node.GetValue("net.maxon.node.attribute.assetid")[0]` 
 - TypeScript 类型检查、lint、已跟踪文件的格式检查、45 个已跟踪 Python 文件的 Ruff lint/format、构建与工具目录检查通过。
 - 主目录 `npm run check` 的全目录格式检查被用户未跟踪目录 `.codex_ref_video1/labels/` 中的 8 个 JSON 文件阻断；全目录 Ruff 另报告该目录中的两个原有 Python 脚本导入排序问题。未格式化或修改这些用户文件；不能把本次完整 `npm run check` 宣称为通过。
 - 上述新回归不连接 C4D，不作为最新源码真实兼容性证据。下一次真实测试仍待安装、手动重启和用户暂停编辑的窗口。
+
+## 节点 ID 补丁安装：2026-09-05 20:52（北京时间）
+
+- 安装源为主目录提交 `023406e`。用户确认关闭后，两次检查 C4D / Team Render / c4dpy 进程数均为 0；审阅 dry-run，并确认源、目标与备份树没有 reparse point 后安装。
+- 旧插件完整备份到 `C:\Users\Yihong\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_789E552B\mcp_bridge_backups\cinema4d_mcp_bridge.backup-2026-09-05T12-52-23.050Z`，62 个文件的相对路径与 SHA-256 与安装前完全一致。
+- 新安装目录与主目录安装源的 70 个文件（含本地生成文件）相对路径与 SHA-256 全部一致，插件扫描目录中旧备份数为 0。
+- 本次未启动 C4D、创建工程或运行真实测试。补丁已经落盘，仍需用户手动启动后的加载检查和严格 Redshift 流程验证，不能宣称 PBR 或正式渲染已经通过。
 
 ## 依据
 
