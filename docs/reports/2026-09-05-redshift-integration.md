@@ -60,7 +60,7 @@ Node.js `v24.18.0`。以下检查通过，测试未连接 C4D：
 
 ## 下一次真实验证
 
-用户可在离线开发期间正常使用 C4D。9 月 5 日 20:52 安装版已完成下述复验，但仍未通过 PBR；最新原生 Pair 修复 `9dbc0e6` 已于 9 月 6 日 18:14 安装，等待用户手动启动并完成工程恢复。先只读验证 runtime/security/Redshift capabilities，再在用户暂停场景操作的时间内运行严格 Redshift 测试；测试现在会在 PBR 写入前核对实际节点 ID，仍只使用一个临时工程并清理，不运行全部历史 E2E。
+用户可在离线开发期间正常使用 C4D。原生 Pair 修复 `9dbc0e6` 已于 9 月 6 日 18:14 安装，18:19 的真实测试已通过精确节点 ID 检查，但随后在材质端口查找处失败，详见下文。最新端口查找修复仅在源码中，尚未安装；待用户方便时手动退出，再审阅安装、备份并核验文件。启动后先只读检查，再在用户暂停场景操作的窗口运行一次严格 Redshift 测试；仍只使用一个临时工程并清理，不运行全部历史 E2E。
 
 只有两套严格测试通过、零跳过、输出文件有效且工程列表/焦点恢复后，才能更新 compatibility 中对应的真实验证状态。未来的“全控制”扩展仍需按实际 SDK 能力逐项实现和验证。
 
@@ -107,6 +107,22 @@ Maxon 官方示例使用 `node.GetValue("net.maxon.node.attribute.assetid")[0]` 
 - 目标仍为 `C:\Users\Yihong\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_789E552B\plugins\cinema4d_mcp_bridge`；新安装目录与安装源的 70 个文件（含本地生成文件）相对路径及 SHA-256 全部一致。
 - 旧插件备份至 `C:\Users\Yihong\AppData\Roaming\Maxon\Maxon Cinema 4D 2025_789E552B\mcp_bridge_backups\cinema4d_mcp_bridge.backup-2026-09-06T10-14-52.659Z`，70 个文件与安装前快照的相对路径和 SHA-256 全部一致。插件扫描目录中的旧备份数为 0，没有删除备份。
 - 本轮仅安装和文件核验，没有启动 C4D、修改场景或运行真实测试。需要用户启动并完成工程恢复后，验证实际节点 ID 读取及严格 Redshift 流程；安装成功不等于正式渲染通过。
+
+## 原生 Pair 通过与端口查找失败：2026-09-06 18:19（北京时间）
+
+- 用户手动启动后，只读检查通过：C4D `2025302` / `2025.3.2`、Python `3.11.4`、bridge `0.4.0`、loopback、token required、`exec_python: false`；Redshift 返回 929 个节点模板、五类灯光及 8 个 AOV 别名。
+- 开始时只有活动的“未标题 1”，对象和材质均为空。告知用户后，在这个已核实的空白工程中临时添加唯一 Null 标记 `e2e_session_anchor_1a0763a6aa0`，以防 C4D 插入临时工程时自动丢弃空白原工程；未禁用空白工程保护或修改 `make_active: false`。
+- 18:19:01 仅运行一次 `npm run test:live:redshift:2025`：1 failed、0 skipped、exit 1，总用时 4.63 秒。测试创建了一个临时工程和 Redshift 材质，读取并精确匹配了 standardmaterial 与 output 两个 asset ID，证实原生 Pair 提取已在真实运行时通过。
+- 首次 `rs_set_material_pbr` 随后失败，安装版 `redshift/materials.py:194` 的 `ports.FindChild(maxon.Id(root_id))` 抛出 `TypeError: unable to convert builtins.NativePyData to @net.maxon.datatype.internedid`。错误发生在端口预检、图事务之前，未继续执行 PBR 写入、灯光、摄像机、AOV 或渲染步骤；不能将整个 Redshift 流程标记为通过。
+- 测试的 finally 已关闭唯一临时工程；随后按精确 handle 移除原工程中的临时 Null 标记。最终工程列表只有原来的活动“未标题 1”，对象列表为空，读取的 document state 与起点一致。没有保存或关闭用户工程；添加/移除标记可能留下撤销历史，不宣称撤销栈或 dirty 标志完全还原。已通知用户可以继续工作，此后不再操作 C4D。
+
+## 端口查找修复与离线验证：2026-09-06（尚未安装）
+
+- 本机 2025.3.2 的 `GraphNode.FindChild` Python 包装层虽列出 `maxon.Id` 参数类型，实际调用在原生 InternedId 转换处失败。Maxon SDK 专员的纹理端口示例对完整端口 ID 和嵌套的 `path` 均直接传字符串；本次仅将 `_runtime_port` 两处查找参数改为字符串，不改变资产 ID 提取、节点创建或安全开关。
+- 收紧端口 fake，不再用 `str()` 自动接受错误参数；修改实现前，24 项材质测试复现同一 TypeError（15 个 error，包含 subTest）。原有回归覆盖输入、输出和嵌套路径，另补入嵌套 colorspace 情况。
+- 修复后全部 Python 回归 96 项通过，TypeScript 单元测试 73 项通过；两个 live 标志均关闭，测试端口为 65534，未连接 C4D。这些结果只证明离线回归，不证明端口修复或正式渲染在真实软件中通过。
+- TypeScript 类型检查、lint、构建及工具目录一致性检查通过；157 个已跟踪项目文件的格式检查、45 个已跟踪 Python 文件的 Ruff lint/format 和 `git diff --check` 通过。本轮未重跑全目录 `npm run check`，也未修改此前阻断该命令的用户未跟踪素材。
+- 未重装、热加载或退出正在运行的 C4D。最新运行版仍是 `9dbc0e6`；新的字符串端口查找补丁等待用户方便时退出后安装与后续真实验证。
 
 ## 依据
 

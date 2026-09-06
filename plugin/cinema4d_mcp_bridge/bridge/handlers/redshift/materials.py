@@ -191,7 +191,8 @@ def _runtime_port(node, port_id: str, direction: str):
     parts = port_id.removeprefix("#~.").split("/")
     root_id = f"{asset_id}.{parts.pop(0)}"
     ports = node.GetInputs() if direction == "in" else node.GetOutputs()
-    port = ports.FindChild(maxon.Id(root_id))
+    # C4D 2025.3.2 can reject Id -> InternedId conversion here; use string IDs.
+    port = ports.FindChild(root_id)
     try:
         valid = port is not None and bool(port.IsValid())
     except Exception:
@@ -199,7 +200,7 @@ def _runtime_port(node, port_id: str, direction: str):
     for part in parts:
         if not valid:
             break
-        port = port.FindChild(maxon.Id(part))
+        port = port.FindChild(part)
         try:
             valid = port is not None and bool(port.IsValid())
         except Exception:

@@ -82,7 +82,11 @@ class FakePort:
         return None
 
     def FindChild(self, name):
-        return self.children.get(str(name), FakeInvalidPort())
+        if not isinstance(name, str):
+            raise TypeError(
+                "unable to convert builtins.NativePyData to @net.maxon.datatype.internedid"
+            )
+        return self.children.get(name, FakeInvalidPort())
 
     def SetPortValue(self, value):
         if self.allowed_values is not None and value not in self.allowed_values:
@@ -108,7 +112,11 @@ class FakePortList:
         self.ports = ports
 
     def FindChild(self, name):
-        return self.ports.get(str(name), FakeInvalidPort())
+        if not isinstance(name, str):
+            raise TypeError(
+                "unable to convert builtins.NativePyData to @net.maxon.datatype.internedid"
+            )
+        return self.ports.get(name, FakeInvalidPort())
 
     def GetChildren(self):
         return iter(self.ports.values())
@@ -456,6 +464,7 @@ class RedshiftMaterialsTest(unittest.TestCase):
         for asset_id, port_id, direction in (
             (NODE_ASSETS["standard"], "#~.refl_roughness", "in"),
             (NODE_ASSETS["texture"], "#~.tex0/path", "in"),
+            (NODE_ASSETS["texture"], "#~.tex0/colorspace", "in"),
             (NODE_ASSETS["texture"], "#~.outcolor", "out"),
         ):
             with self.subTest(asset_id=asset_id, port_id=port_id):
