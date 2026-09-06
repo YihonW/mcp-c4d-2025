@@ -20,6 +20,12 @@ import { deleteTrackTool } from "./delete-track.js";
 import { describeTool } from "./describe.js";
 import { dumpShaderTool } from "./dump-shader.js";
 import { execPythonEnabled, execPythonTool } from "./exec-python.js";
+import {
+  getFcurveTool,
+  editFcurveKeysTool,
+  transformFcurveTool,
+  setTrackExtrapolationTool,
+} from "./fcurves.js";
 import { getCapabilitiesTool } from "./get-capabilities.js";
 import { getContainerTool } from "./get-container.js";
 import { getDocumentStateTool } from "./get-document-state.js";
@@ -172,6 +178,10 @@ export const ALL_TOOLS: AnyTool[] = [
   getKeyframesTool,
   deleteKeyframeTool,
   deleteTrackTool,
+  getFcurveTool,
+  editFcurveKeysTool,
+  transformFcurveTool,
+  setTrackExtrapolationTool,
   // Layers
   listLayersTool,
   createLayerTool,

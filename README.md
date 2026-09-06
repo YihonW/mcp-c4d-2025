@@ -1,5 +1,7 @@
 # mcp-c4d-2025
 
+**中文文档：[完整入门说明](./README_zh-CN.md) · [动画、F-Curve 与序列渲染](./docs/WORKFLOW_ZH.md)**
+
 [![CI](https://github.com/YihonW/mcp-c4d-2025/actions/workflows/ci.yml/badge.svg)](https://github.com/YihonW/mcp-c4d-2025/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
@@ -11,6 +13,8 @@ Based on [kumo.productions' mcp-cinema4d](https://github.com/kumoproductions/mcp
 
 > [!IMPORTANT]
 > **Foundation and a scoped Redshift still-render path are live-verified on Windows x64 / Cinema 4D 2025.3.2.** See [Compatibility](./docs/COMPATIBILITY.md) for exact installed revisions and evidence. Version 0.4.0 adds full DescID animation selectors, explicit parameter links, and bounded PNG sequence jobs. Source availability is not a blanket compatibility claim; character skinning/IK and production animation rendering are not fully supported or verified.
+
+Version 0.5.0 adds four bounded F-Curve tools for existing REAL tracks: read/sample, edit values and tangents, retime/scale, and set pre/post extrapolation. Automatic tangents remain automatic and are recalculated by C4D; this is not an arbitrary curve-shape preservation guarantee. These additions have not yet been installed or live-verified. See the [F-Curve workflow](./docs/WORKFLOW_ZH.md#050-f-curve-曲线控制).
 
 [中文使用说明与开发范围](./docs/WORKFLOW_ZH.md)
 
@@ -68,7 +72,7 @@ Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKE
 
 ## Tools
 
-79 tools across 17 groups are registered (78 exposed by default; arbitrary Python is opt-in). Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
+83 tools across 17 groups are registered (82 exposed by default; arbitrary Python is opt-in). Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
 
 | Group                            | Count | What's in it                                                                                                                                                                                                                       |
 | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -80,7 +84,7 @@ Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKE
 | Modeling · Mesh                  |   4   | `modeling_command` (CSO / Make Editable / Connect / Subdivide / …), `get_mesh`, `set_mesh`, `set_mesh_selection`.                                                                                                                  |
 | Document I/O                     |   6   | `save_document`, `open_document`, `new_document`, `list_documents`, `set_active_document` (switch between already-open docs), `close_document` (force-gated for unsaved changes).                                                  |
 | Node graphs                      |  10   | Node-material graphs (walk / asset enum / `apply_graph_description` / per-port edits / removal) **and** Xpresso (GvNodeMaster) graphs (`list_xpresso_nodes` / `apply_xpresso_graph` / `set_xpresso_port` / `remove_xpresso_node`). |
-| Tag helpers · Animation          |   5   | `assign_material`; `list_tracks`, `get_keyframes`, `delete_keyframe`, `delete_track`.                                                                                                                                              |
+| Tag helpers · Animation          |   9   | `assign_material`; `list_tracks`, `get_keyframes`, `delete_keyframe`, `delete_track`; `get_fcurve`, `edit_fcurve_keys`, `transform_fcurve`, `set_track_extrapolation` (existing REAL tracks only).                                 |
 | Transforms · User data · MoGraph |   5   | `set_transform`; `add_user_data` / `list_user_data` / `remove_user_data`; `list_mograph_clones`.                                                                                                                                   |
 | Layers                           |   5   | Enumerate, create, assign, query, flag toggles (solo / view / render / locked / …).                                                                                                                                                |
 | Redshift                         |  14   | Capabilities; PBR materials; lights and camera; AOVs; RenderData; explicit-frame Beauty rendering; PNG sequence start/status/cancel/resume.                                                                                        |

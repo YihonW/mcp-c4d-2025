@@ -171,9 +171,9 @@ export function requireLiveBridge(
       `Windows platform win32 required; bridge reports ${capabilities.platform ?? "missing"}`,
     );
   }
-  if (capabilities.bridge_version !== "0.4.0") {
+  if (capabilities.bridge_version !== "0.5.0") {
     throw new Error(
-      `bridge 0.4.0 required; bridge reports ${capabilities.bridge_version ?? "missing"}`,
+      `bridge 0.5.0 required; bridge reports ${capabilities.bridge_version ?? "missing"}`,
     );
   }
   if (capabilities.security?.loopback !== true) {

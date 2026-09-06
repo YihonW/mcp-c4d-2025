@@ -11,6 +11,7 @@ Submodules (organised by domain, not by workflow):
                    (list/describe/get/set/create/remove/get_container/dump_shader)
   animation      — list_tracks, get_keyframes, set_keyframe,
                    delete_keyframe, delete_track
+  fcurves        — guarded REAL curve reading, key editing, retiming, extrapolation
   transform      — set_transform (write), sample_transform (read)
   takes          — create_take, take_override
   render_data    — create_render_data
@@ -71,6 +72,12 @@ from .entities import (
     handle_list_entities,
     handle_remove_entity,
     handle_set_params,
+)
+from .fcurves import (
+    handle_edit_fcurve_keys,
+    handle_get_fcurve,
+    handle_set_track_extrapolation,
+    handle_transform_fcurve,
 )
 from .hierarchy import (
     handle_clone_entity,
@@ -151,6 +158,10 @@ HANDLERS = {
     "dump_shader": handle_dump_shader,
     "create_entity": handle_create_entity,
     "set_keyframe": handle_set_keyframe,
+    "get_fcurve": handle_get_fcurve,
+    "edit_fcurve_keys": handle_edit_fcurve_keys,
+    "transform_fcurve": handle_transform_fcurve,
+    "set_track_extrapolation": handle_set_track_extrapolation,
     "remove_entity": handle_remove_entity,
     "set_document": handle_set_document,
     "batch": handle_batch,

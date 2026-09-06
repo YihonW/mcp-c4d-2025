@@ -48,6 +48,15 @@ class FakeTime:
     def GetFrame(self, fps):
         return round(self.seconds * fps)
 
+    def Get(self):
+        return self.seconds
+
+    def __eq__(self, other):
+        return isinstance(other, FakeTime) and self.seconds == other.seconds
+
+    def __lt__(self, other):
+        return self.seconds < other.seconds
+
 
 class FakeKey:
     def __init__(self, time, category):
@@ -297,6 +306,23 @@ class AnimationTests(unittest.TestCase):
     def test_fps_override_and_long_value(self):
         self.set_key(path=[[100, LONG, 0]], frame=24, fps=24, value=7)
         self.assertEqual(self.get_keys(path=[[100, LONG, 0]], fps=48)["keys"][0]["frame"], 48)
+
+    def test_subframes_are_not_rounded_into_integer_key_deletions_or_ranges(self):
+        self.set_key(path=USER_REAL, frame=0, value=1)
+        curve = self.obj.tracks[0].curve
+        curve.keys[0].time = FakeTime(1, 120)  # 0.25 frames at document FPS 30
+        curve.AddKey(FakeTime(3, 120))["key"].SetValue(curve, 2)
+        self.assertEqual(
+            [key["frame"] for key in self.get_keys(path=USER_REAL)["keys"]], [0.25, 0.75]
+        )
+        self.assertEqual(self.get_keys(path=USER_REAL, start_frame=1)["count"], 0)
+        self.assertEqual(self.get_keys(path=USER_REAL, end_frame=0)["count"], 0)
+        for selector in ({"frame": 0}, {"frame": 1}, {"end_frame": 0}, {"start_frame": 1}):
+            result = self.animation.handle_delete_keyframe(
+                {"handle": HANDLE, "path": USER_REAL, **selector}
+            )
+            self.assertEqual(result["removed"], 0)
+        self.assertEqual(self.get_keys(path=USER_REAL)["count"], 2)
 
     def test_new_track_and_existing_key_updates_record_undo_at_correct_time(self):
         self.set_key(path=USER_REAL, frame=0, value=1)

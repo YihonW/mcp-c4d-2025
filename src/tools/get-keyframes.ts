@@ -28,7 +28,7 @@ export const getKeyframesTool = defineTool({
   group: "animation",
   title: "Get Keyframes",
   description:
-    "Read keys using a full path from list_tracks or legacy param_id/component. Returns [{frame, value, interp}]. Optional start_frame/end_frame clip the range inclusively.",
+    "Read keys using a full path from list_tracks or legacy param_id/component. Returns [{frame, value, interp}], preserving fractional frame positions. Optional integer start_frame/end_frame clip the exact key times inclusively without rounding subframes.",
   inputShape,
   async handler(args, client) {
     return textResult(await client.request("get_keyframes", input.parse(args), 10_000));

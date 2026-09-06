@@ -200,10 +200,11 @@ def handle_get_keyframes(params: dict[str, Any]) -> dict[str, Any]:
     keys: list[dict[str, Any]] = []
     for i in range(curve.GetKeyCount()):
         k = curve.GetKey(i)
-        frame = int(k.GetTime().GetFrame(fps))
-        if start_frame is not None and frame < int(start_frame):
+        time = k.GetTime()
+        frame = float(time.Get()) * fps
+        if start_frame is not None and time < c4d.BaseTime(start_frame, fps):
             continue
-        if end_frame is not None and frame > int(end_frame):
+        if end_frame is not None and c4d.BaseTime(end_frame, fps) < time:
             continue
         interp_id = None
         with contextlib.suppress(Exception):
@@ -271,14 +272,14 @@ def handle_delete_keyframe(params: dict[str, Any]) -> dict[str, Any]:
         # Walk keys in reverse so index-based DelKey stays valid mid-iteration.
         for i in range(curve.GetKeyCount() - 1, -1, -1):
             k = curve.GetKey(i)
-            f = int(k.GetTime().GetFrame(fps))
+            time = k.GetTime()
             if frame is not None:
-                if f != int(frame):
+                if time != c4d.BaseTime(frame, fps):
                     continue
             else:
-                if start_frame is not None and f < int(start_frame):
+                if start_frame is not None and time < c4d.BaseTime(start_frame, fps):
                     continue
-                if end_frame is not None and f > int(end_frame):
+                if end_frame is not None and c4d.BaseTime(end_frame, fps) < time:
                     continue
             curve.DelKey(i)
             removed += 1

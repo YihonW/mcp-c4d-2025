@@ -13,7 +13,7 @@ from c4d import documents
 
 from ._helpers import _require_writable_path
 
-_BRIDGE_VERSION = "0.4.0"
+_BRIDGE_VERSION = "0.5.0"
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _security_snapshot = (True, False)
@@ -80,6 +80,7 @@ def handle_get_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
         "features": {
             "rs_render_frame": True,
             "animation_descid_paths": True,
+            "animation_fcurves": True,
             "parameter_links": True,
             "node_materials": getattr(c4d, "NodeMaterial", None) is not None,
             "scene_nodes": callable(getattr(base_document, "GetSceneRepository", None)),

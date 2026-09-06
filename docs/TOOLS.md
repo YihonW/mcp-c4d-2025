@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-79 tools across 17 groups.
+83 tools across 17 groups.
 
 ## Basics
 
@@ -164,12 +164,16 @@ Read derived MoGraph state.
 
 Enumerate CTracks and edit keyframes.
 
-| Tool              | Description                                                                   |
-| ----------------- | ----------------------------------------------------------------------------- |
-| `list_tracks`     | Enumerate CTracks.                                                            |
-| `get_keyframes`   | Read keys using a full path from list_tracks or legacy param_id/component.    |
-| `delete_keyframe` | Remove keys selected by full path or legacy param_id/component.               |
-| `delete_track`    | Remove an entire CTrack identified by full path or legacy param_id/component. |
+| Tool                      | Description                                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_tracks`             | Enumerate CTracks.                                                                                                                                           |
+| `get_keyframes`           | Read keys using a full path from list_tracks or legacy param_id/component.                                                                                   |
+| `delete_keyframe`         | Remove keys selected by full path or legacy param_id/component.                                                                                              |
+| `delete_track`            | Remove an entire CTrack identified by full path or legacy param_id/component.                                                                                |
+| `get_fcurve`              | Read an existing REAL F-Curve: stable key indices for this snapshot, precise frame times, values, interpolation, tangent offsets and pre/post extrapolation. |
+| `edit_fcurve_keys`        | Edit existing REAL keys by snapshot index: values, linear/spline/step interpolation, automatic or manual tangents.                                           |
+| `transform_fcurve`        | Retime/scale selected or all REAL keys.                                                                                                                      |
+| `set_track_extrapolation` | Set pre/post behavior for an existing REAL track: off, hold constant, continue (linear), repeat, offset repeat or oscillate.                                 |
 
 ## Layers
 

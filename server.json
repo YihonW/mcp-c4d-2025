@@ -6,12 +6,12 @@
     "url": "https://github.com/YihonW/mcp-c4d-2025",
     "source": "github"
   },
-  "version": "0.4.0",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-c4d-2025",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       }

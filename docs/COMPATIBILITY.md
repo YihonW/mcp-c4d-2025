@@ -15,6 +15,8 @@ Only the exact foundation, Redshift and workflow behaviors below are claimed as 
 
 ## Evidence labels
 
+Version 0.5.0 adds four guarded F-Curve tools (83 registered, 82 by default). Their source and fake-runtime tests are separate from the installed 0.4.0 live evidence above. The 0.5.0 bridge has **not yet been installed or live-verified**; the existing working Cinema 4D session was not restarted. Current strict live suites require the 0.5.0 candidate before any isolated-document tests can run. See [Chinese curve instructions](./WORKFLOW_ZH.md) for supported REAL channels and exclusions, and the [0.5.0 development record](./reports/2026-09-06-fcurve-validation.md) for its separate verification boundary.
+
 - **Inherited / unverified:** implementation or documentation carried from the existing `mcp-cinema4d` codebase, or a tool not exercised by the strict foundation suite. Presence in [TOOLS.md](./TOOLS.md) only means the tool is registered in source.
 - **Foundation live-verified:** the exact behavior was exercised by `npm run test:live:2025`, the command exited `0`, the bridge and security snapshot matched the recorded runtime below, and the foundation test had no skip.
 - **Redshift read-only verified:** authenticated capability discovery succeeded on the recorded runtime. This does not verify scene mutation or rendering.

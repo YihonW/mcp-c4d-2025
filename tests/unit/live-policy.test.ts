@@ -7,7 +7,7 @@ const validCapabilities = {
   display_version: "2025.3.2",
   compatibility: "supported",
   platform: "win32",
-  bridge_version: "0.4.0",
+  bridge_version: "0.5.0",
   security: { loopback: true, token_required: false, exec_python: false },
 };
 
@@ -43,9 +43,11 @@ describe("requireLiveBridge", () => {
     expect(() =>
       requireLiveBridge({ ready: true }, { ...validCapabilities, platform: "darwin" }),
     ).toThrow(/Windows.*win32/i);
-    expect(() =>
-      requireLiveBridge({ ready: true }, { ...validCapabilities, bridge_version: "0.3.1" }),
-    ).toThrow(/bridge 0\.4\.0 required/i);
+    for (const bridge_version of ["0.3.1", "0.4.0"]) {
+      expect(() =>
+        requireLiveBridge({ ready: true }, { ...validCapabilities, bridge_version }),
+      ).toThrow(/bridge 0\.5\.0 required/i);
+    }
   });
 
   test("rejects a mismatched display version or compatibility classification", () => {

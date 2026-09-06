@@ -38,7 +38,7 @@ export const deleteKeyframeTool = defineTool({
   group: "animation",
   title: "Delete Keyframe",
   description:
-    "Remove keys selected by full path or legacy param_id/component. Pass frame for one key, or start_frame/end_frame for an inclusive range. Omitting all frame bounds deletes every key on that track. Returns {removed, track}.",
+    "Remove keys selected by full path or legacy param_id/component. Pass an integer frame for an exact-time key, or integer start_frame/end_frame for an inclusive range; fractional key times are not rounded into the selection. Omitting all frame bounds deletes every key on that track. Returns {removed, track}.",
   inputShape,
   async handler(args, client) {
     return textResult(await client.request("delete_keyframe", input.parse(args), 10_000));

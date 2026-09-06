@@ -1,6 +1,6 @@
 {
   "name": "mcp-c4d-2025",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "TypeScript MCP server for Cinema 4D with generic entity CRUD, parameter-level access, undo-grouped batch ops, and security controls.",
   "keywords": [
     "3d",
@@ -50,6 +50,7 @@
     "test:live:redshift:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/redshift-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
     "test:watch": "vitest",
     "test:live:workflow:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/workflow-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
+    "test:live:fcurves:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/fcurves-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
