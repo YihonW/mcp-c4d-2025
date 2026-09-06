@@ -183,14 +183,25 @@ def _set_parameter(aov, parameter, value) -> None:
     aov[parameter] = value
 
 
-def _exact_clone(aov):
+def _exact_clone(aov, redshift):
     for method_name in ("GetClone", "Clone"):
         clone = getattr(aov, method_name, None)
         if callable(clone):
             copied = clone()
             if copied is not None and copied is not aov:
                 return copied
-    return None
+    serialize = getattr(aov, "_SetContainer", None)
+    if not callable(serialize):
+        return None
+    # Use the same opaque transfer API as Redshift's RendererGet/SetAOVs.
+    container = c4d.BaseContainer()
+    if serialize(container, 0) is False:
+        raise RuntimeError("failed to serialize native Redshift AOV")
+    copied = redshift.RSAOV()
+    deserialize = getattr(copied, "_GetContainer", None)
+    if not callable(deserialize) or not deserialize(container, 0):
+        raise RuntimeError("failed to deserialize native Redshift AOV")
+    return copied
 
 
 def _reconstruct_aov(aov, redshift):
@@ -204,7 +215,7 @@ def _reconstruct_aov(aov, redshift):
 
 
 def _clone_aov(aov, redshift):
-    copied = _exact_clone(aov)
+    copied = _exact_clone(aov, redshift)
     return copied if copied is not None else _reconstruct_aov(aov, redshift)
 
 
@@ -213,7 +224,7 @@ def _rollback_snapshot(original, redshift) -> tuple[list[object] | None, bool]:
     exact = True
     try:
         for aov in original:
-            copied = _exact_clone(aov)
+            copied = _exact_clone(aov, redshift)
             if copied is None:
                 copied = _reconstruct_aov(aov, redshift)
                 exact = False
@@ -394,6 +405,8 @@ def handle_rs_clear_aovs(params: dict[str, Any]) -> dict[str, Any]:
         original = list(redshift.RendererGetAOVs(video_post))
         removed = [_aov_record(aov, index) for index, aov in enumerate(original)]
         rollback_snapshot, rollback_exact = _rollback_snapshot(original, redshift)
+        if rollback_snapshot is None:
+            raise RuntimeError("failed to snapshot Redshift AOVs; refusing to clear")
         rollback = _clear_with_rollback(redshift, video_post, rollback_snapshot, rollback_exact)
         return {
             "render_data": {"kind": "render_data", "name": render_data.GetName()},

@@ -257,6 +257,14 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
           // C4D 2025 drsaov.h: direct AOV format/depth are independent of RDATA_FORMAT.
           params: { "6002": 2, "6003": 0 }, // PNG, 8-bit integer.
         });
+        // Exercise updating an existing native RSAOV without losing its format/path settings.
+        await c.call("rs_upsert_aov", {
+          document_name: documentName,
+          render_data_name: renderDataName,
+          type: preferredAlias,
+          name: aovName,
+          enabled: true,
+        });
 
         const rendered = await c.call<{
           renderer: { id: number; name: string };

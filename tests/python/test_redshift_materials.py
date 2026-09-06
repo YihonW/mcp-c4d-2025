@@ -61,6 +61,17 @@ PORTS = {
 }
 
 
+class FakeSdkData:
+    def __init__(self, value):
+        self._data = value
+
+    def __ne__(self, other):
+        return self._data != other._data
+
+    def MaxonConvert(self):
+        return self._data
+
+
 class FakePort:
     def __init__(self, port_id, allowed_values=None, children=None):
         self.port_id = port_id
@@ -81,7 +92,7 @@ class FakePort:
         if attribute == "net.maxon.node.attribute.enumvalues":
             return self.allowed_values
         if attribute == "net.maxon.description.data.base.defaultvalue":
-            return self.value
+            return FakeSdkData(self.value)
         return None
 
     def FindChild(self, name):
@@ -359,6 +370,10 @@ class RedshiftMaterialsTest(unittest.TestCase):
         self.maxon, _ = make_maxon_runtime(MATERIAL_ASSETS)
         self.maxon.DataDictionary = dict
         self.maxon.Vector = lambda x, y, z: [x, y, z]
+        self.maxon.CONVERSIONMODE = types.SimpleNamespace(TOBUILTIN=1)
+        self.maxon.MaxonConvert = lambda value, _mode: (
+            value.MaxonConvert() if isinstance(value, FakeSdkData) else value
+        )
         self.redshift = make_redshift_runtime()
         self.document_map = {
             document: FakeMaterialDocument(document) for document in self.document_state.items
@@ -975,9 +990,28 @@ class RedshiftMaterialsTest(unittest.TestCase):
             texture.GetInputs().FindChild(f"{NODE_ASSETS['texture']}.tex0").FindChild("colorspace")
         )
         self.assertIsNone(color_space.GetPortValue())
-        self.assertEqual(color_space.GetValue("net.maxon.description.data.base.defaultvalue"), "")
+        self.assertEqual(
+            self.maxon.MaxonConvert(
+                color_space.GetValue("net.maxon.description.data.base.defaultvalue"),
+                self.maxon.CONVERSIONMODE.TOBUILTIN,
+            ),
+            "",
+        )
         self.assertEqual(result["updated_channels"], ["base_color"])
         self.assertEqual(graph.transactions[-2:], ["begin", "commit"])
+
+    def test_missing_authored_color_space_is_not_treated_as_an_empty_string(self):
+        materials = importlib.import_module("bridge.handlers.redshift.materials")
+        texture = FakeGraphNode("texture", NODE_ASSETS["texture"])
+        color_space = (
+            texture.GetInputs().FindChild(f"{NODE_ASSETS['texture']}.tex0").FindChild("colorspace")
+        )
+
+        with (
+            patch.object(color_space, "SetPortValue"),
+            self.assertRaisesRegex(RuntimeError, "actual=None \\(NoneType\\)"),
+        ):
+            materials._set_or_connect({"texture": texture}, "texture", "#~.tex0/colorspace", "")
 
 
 if __name__ == "__main__":

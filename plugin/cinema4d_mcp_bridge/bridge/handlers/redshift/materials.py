@@ -297,6 +297,7 @@ def _set_or_connect(node_map: dict[str, object], node_id: str, port_id: str, val
         if port_id == _TEXTURE_COLOR_SPACE_PORT:
             # Validate the authored attribute written by SetPortValue, not derived "value".
             read_value = target.GetValue("net.maxon.description.data.base.defaultvalue")
+            read_value = maxon.MaxonConvert(read_value, maxon.CONVERSIONMODE.TOBUILTIN)
             if read_value != port_value:
                 raise RuntimeError(
                     "texture color_space readback mismatch: "

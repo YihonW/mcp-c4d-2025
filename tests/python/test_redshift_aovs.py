@@ -6,6 +6,7 @@ import os
 import sys
 import types
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -43,6 +44,33 @@ class FakeContainer:
 
     def __iter__(self):
         return iter(self.values.items())
+
+
+class FakeNativeAov:
+    """RSAOV-shaped API: no public container accessor or clone method."""
+
+    def __init__(self, values=None):
+        self.values = deepcopy(values or {})
+
+    def GetParameter(self, parameter):
+        return self.values.get(parameter)
+
+    def SetParameter(self, parameter, value):
+        self.values[parameter] = value
+
+    def _SetContainer(self, container, index):
+        container.payloads[index] = deepcopy(self.values)
+
+    def _GetContainer(self, container, index):
+        if index not in container.payloads:
+            return False
+        self.values = deepcopy(container.payloads[index])
+        return True
+
+
+class FakeNativeContainer:
+    def __init__(self):
+        self.payloads = {}
 
 
 class FakeRenderData:
@@ -257,6 +285,63 @@ class RedshiftAovsTest(unittest.TestCase):
         self.assertEqual(copied.GetParameter(9002), "safe")
         self.assertNotIn(9003, copied.values)
         self.assertNotIn(self.c4d.REDSHIFT_AOV_FILE_EFFECTIVE_PATH, copied.values)
+
+    def _native_aov(self):
+        values = self._aov().values
+        values.update({6002: 2, 6003: 0, 9003: {"custom": [1, 2, 3]}})
+        self.c4d.BaseContainer = FakeNativeContainer
+        self.redshift.RSAOV = FakeNativeAov
+        original = FakeNativeAov(values)
+        self.aovs = [original]
+        return original
+
+    def test_native_upsert_preserves_complete_payload_and_independent_original(self):
+        original = self._native_aov()
+        original_values = deepcopy(original.values)
+
+        self._load().handle_rs_upsert_aov({"type": "beauty", "name": "Beauty", "enabled": False})
+
+        copied = self.set_calls[0][0]
+        self.assertIsNot(copied, original)
+        self.assertEqual(copied.values, {**original_values, self.c4d.REDSHIFT_AOV_ENABLED: False})
+        copied.values[9003]["custom"].append(4)
+        self.assertEqual(original.values, original_values)
+
+    def test_native_clear_failure_restores_complete_independent_snapshot(self):
+        original = self._native_aov()
+        original_values = deepcopy(original.values)
+        self.fail_first_set = True
+
+        with self.assertRaisesRegex(RuntimeError, "rollback=succeeded"):
+            self._load().handle_rs_clear_aovs({"document_name": "main", "force": True})
+
+        restored = self.set_calls[1][0]
+        self.assertIsNot(restored, original)
+        self.assertEqual(restored.values, original_values)
+        restored.values[9003]["custom"].append(4)
+        self.assertEqual(original.values, original_values)
+
+    def test_native_transfer_failure_never_degrades_to_lossy_reconstruction(self):
+        original = self._native_aov()
+        original_values = deepcopy(original.values)
+        aovs = self._load()
+        for method in ("_SetContainer", "_GetContainer"):
+            for operation in ("upsert", "clear"):
+                self.set_calls.clear()
+                self.aovs = [original]
+                with (
+                    self.subTest(method=method, operation=operation),
+                    patch.object(FakeNativeAov, method, return_value=False),
+                    self.assertRaises(RuntimeError),
+                ):
+                    if operation == "upsert":
+                        aovs.handle_rs_upsert_aov(
+                            {"type": "beauty", "name": "Beauty", "enabled": False}
+                        )
+                    else:
+                        aovs.handle_rs_clear_aovs({"document_name": "main", "force": True})
+                self.assertEqual(self.set_calls, [])
+                self.assertEqual(original.values, original_values)
 
     def test_list_uses_exact_named_render_data(self):
         self.aovs = [self._aov(name="FinalBeauty")]
