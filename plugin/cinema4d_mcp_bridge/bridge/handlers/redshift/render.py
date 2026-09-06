@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 import time
+from contextlib import ExitStack
 from typing import Any
 
 import c4d
@@ -314,7 +315,10 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
     if redshift is None:
         raise RuntimeError(reason or "redshift module unavailable")
 
-    with document_scope(values["document_name"], required=True) as document:
+    with (
+        document_scope(values["document_name"], required=True) as document,
+        ExitStack() as render_scope,
+    ):
         matches = _render_data_matches(document, values["render_data_name"])
         if not matches:
             raise ValueError(f"render_data not found: {values['render_data_name']!r}")
@@ -326,6 +330,11 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
         if int(render_data[_symbol("RDATA_RENDERENGINE")]) != RS_RENDERER_ID:
             raise ValueError(f"RenderData renderer must be Redshift ({RS_RENDERER_ID})")
         video_post = _find_redshift_video_post(render_data)
+        # Redshift reads the active RenderData's video post even when a different
+        # settings container is passed to RenderDocument. Restore it on every exit.
+        previous_render_data = document.GetActiveRenderData()
+        render_scope.callback(document.SetActiveRenderData, previous_render_data)
+        document.SetActiveRenderData(render_data)
         expected_aovs = _expected_aov_outputs(redshift, video_post, overwrite=values["overwrite"])
 
         width = int(render_data[_symbol("RDATA_XRES")])

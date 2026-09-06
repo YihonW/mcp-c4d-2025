@@ -266,6 +266,14 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
           enabled: true,
         });
 
+        const stateQuery = {
+          document_name: documentName,
+          undo_group: false,
+          stop_on_error: true,
+          ops: [{ op: "get_document_state", args: {} }],
+        };
+        const beforeRenderState = await c.call<BatchResult>("batch", stateQuery);
+        expect(beforeRenderState.results[0].error).toBeUndefined();
         const rendered = await c.call<{
           renderer: { id: number; name: string };
           width: number;
@@ -289,7 +297,7 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
         expect(rendered).toMatchObject({ width: 64, height: 64 });
         expect(rendered.beauty).toEqual({ path: beautyPath, size: expect.any(Number) });
         expect(rendered.beauty.size).toBeGreaterThan(0);
-        expect(rendered.aovs.length).toBeGreaterThan(0);
+        expect(rendered.aovs.length, JSON.stringify(rendered)).toBeGreaterThan(0);
         expect(rendered.aovs.every((item) => item.size > 0 && existsSync(item.path))).toBe(true);
         expect(rendered.expected_missing).toEqual([]);
         expect(rendered.duration_ms).toBeGreaterThanOrEqual(0);
@@ -300,6 +308,7 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
           expect(bytes.readUInt32BE(16)).toBe(64);
           expect(bytes.readUInt32BE(20)).toBe(64);
         }
+        expect(await c.call<BatchResult>("batch", stateQuery)).toEqual(beforeRenderState);
 
         const listedAovs = await c.call<{ render_data: { name: string } }>("rs_list_aovs", {
           document_name: documentName,

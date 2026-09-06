@@ -208,6 +208,8 @@ class RedshiftRenderTest(unittest.TestCase):
         self.return_none_video_post = False
         self.aovs = []
         self.render_calls = []
+        self.expected_render_data = None
+        self.render_exception = None
         self.render_result = self.c4d.RENDERRESULT_OK
         self.allocate_bitmap = True
         self.save_calls = []
@@ -223,7 +225,15 @@ class RedshiftRenderTest(unittest.TestCase):
             return render_data.video_post
 
         self.redshift.FindAddVideoPost = find_video_post
-        self.redshift.RendererGetAOVs = lambda _video_post: list(self.aovs)
+
+        def get_aovs(video_post):
+            self.assertIs(
+                self.document_state.active.GetActiveRenderData(), self.expected_render_data
+            )
+            self.assertIs(video_post, self.expected_render_data.video_post)
+            return list(self.aovs)
+
+        self.redshift.RendererGetAOVs = get_aovs
         self.c4d.bitmaps = types.SimpleNamespace(
             MultipassBitmap=lambda width, height, color_mode: (
                 FakeBitmap(self, width, height, color_mode) if self.allocate_bitmap else None
@@ -231,7 +241,10 @@ class RedshiftRenderTest(unittest.TestCase):
         )
 
         def render_document(document, settings, bitmap, flags):
+            self.assertIs(document.GetActiveRenderData(), self.expected_render_data)
             self.render_calls.append((document, settings, bitmap, flags))
+            if self.render_exception is not None:
+                raise self.render_exception
             if self.render_result == self.c4d.RENDERRESULT_OK and self.write_aov_outputs:
                 for aov in self.aovs:
                     if aov.GetParameter(self.c4d.REDSHIFT_AOV_FILE_ENABLED):
@@ -340,6 +353,7 @@ class RedshiftRenderTest(unittest.TestCase):
         render_data[self.c4d.RDATA_PATH] = "unchanged-source-path"
         render_data.video_post = FakeVideoPost()
         document.InsertRenderData(render_data)
+        self.expected_render_data = render_data
         return render_data
 
     def _aov(self, path, *, effective_path=None):
@@ -522,6 +536,7 @@ class RedshiftRenderTest(unittest.TestCase):
         self.assertGreaterEqual(result["duration_ms"], 0)
         self.assertEqual(source[self.c4d.RDATA_PATH], "unchanged-source-path")
         self.assertIs(self.document.active_render_data, self.user_render_data)
+        self.assertEqual(self.document.active_changes, [source, self.user_render_data])
 
     def test_render_guards_required_confirmation_and_output_paths_before_render(self):
         self._configured_render_data()
@@ -677,12 +692,16 @@ class RedshiftRenderTest(unittest.TestCase):
                 }
             )
         self.assertEqual(self.render_calls, [])
+        self.assertIs(self.document.GetActiveRenderData(), self.user_render_data)
 
     def test_render_failure_restores_active_document_and_does_not_create_beauty(self):
         target_document = FakeRenderDocument("target")
         self.document.next = target_document
         self.document_state.items = [self.document, target_document]
-        self._configured_render_data(document=target_document)
+        previous_render_data = self._render_data("Target Original")
+        target_document.InsertRenderData(previous_render_data)
+        target_document.active_render_data = previous_render_data
+        target_render_data = self._configured_render_data(document=target_document)
         self.render_result = self.c4d.RENDERRESULT_FAILED
         render = self._load()
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -698,6 +717,27 @@ class RedshiftRenderTest(unittest.TestCase):
                 )
             self.assertFalse(os.path.exists(output_path))
         self.assertIs(self.document_state.active, self.document)
+        self.assertIs(target_document.GetActiveRenderData(), previous_render_data)
+        self.assertEqual(target_document.active_changes, [target_render_data, previous_render_data])
+
+    def test_render_exception_restores_previous_active_render_data(self):
+        target = self._configured_render_data()
+        self.render_exception = RuntimeError("injected RenderDocument exception")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = os.path.join(temp_dir, "beauty.png")
+            with self.assertRaisesRegex(RuntimeError, "injected RenderDocument exception"):
+                self._load().handle_rs_render(
+                    {
+                        "document_name": "main",
+                        "render_data_name": "Final",
+                        "output_path": output_path,
+                        "force": True,
+                    }
+                )
+            self.assertFalse(os.path.exists(output_path))
+
+        self.assertIs(self.document.GetActiveRenderData(), self.user_render_data)
+        self.assertEqual(self.document.active_changes, [target, self.user_render_data])
 
     def test_render_save_failure_and_missing_expected_aov_are_reported_truthfully(self):
         self._configured_render_data()
