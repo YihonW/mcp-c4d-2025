@@ -14,6 +14,8 @@ Based on [kumo.productions' mcp-cinema4d](https://github.com/kumoproductions/mcp
 
 [中文使用说明与开发范围](./docs/WORKFLOW_ZH.md)
 
+The installed 0.4.0 candidate also passed a [single-document workflow test](./docs/reports/2026-09-06-workflow-validation.md): editable geometry, rigid parent-hierarchy animation, user-data/reference access and seven 128×128 Redshift PNG frames. This is a scoped technical test, not a complete character-rigging or production-rendering claim.
+
 **Good for:**
 
 - **Scene audits** — "List every object on the `hero` layer; flag any with non-uniform scale or missing Texture tags."

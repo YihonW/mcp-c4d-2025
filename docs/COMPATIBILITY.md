@@ -11,7 +11,7 @@ This fork targets Cinema 4D 2025.3.2. A target is not a support claim: foundatio
 | Cinema 4D 2026.x   | **Inherited / unverified in this fork**                                      | Upstream observations may exist, but they are not current live evidence for this fork or for 2025.  |
 | Other releases     | **Unsupported / unverified**                                                 | No compatibility evidence is recorded.                                                              |
 
-Only the exact foundation and Redshift behaviors below are claimed as live-verified. Installed source `4a62967` passed both strict suites on 2026-09-06. The remaining behaviors of the 11 Redshift tools are offline-tested only. No complete tool group and no blanket claim for all 76 tools is implied.
+Only the exact foundation, Redshift and workflow behaviors below are claimed as live-verified. Installed source `81e319d` passed all three strict suites on 2026-09-06; prior source `4a62967` also passed the two earlier suites. Package 0.4.0 registers 79 tools (78 by default). No complete tool group or blanket support for the full catalog is implied. See the [0.4.0 validation record](./reports/2026-09-06-workflow-validation.md).
 
 ## Evidence labels
 
@@ -74,9 +74,17 @@ Installation update (2026-09-06 18:14 Beijing time): the native-pair fix from `9
 
 Retest update (2026-09-06 18:19 Beijing time): the installed `9dbc0e6` candidate passed the exact standard-material and output asset-ID assertions. The single strict Redshift test then failed at `ports.FindChild(maxon.Id(root_id))` with an `InternedId` conversion TypeError, before the PBR graph transaction or any render. One test failed, zero skipped, exit `1`. Its single temporary document and the temporary Null marker used to preserve the original blank document were removed; only the original active document remained, with no objects. No user document was closed or saved, although marker creation/removal may leave undo history. Source now passes string IDs for both root and nested port lookup; the stricter fake reproduces the observed failure, and all 96 Python and 73 TypeScript unit tests pass after the fix. This port-lookup patch is **not installed or live-verified**. Capability discovery remains the only promoted Redshift row; successful node-ID assertions do not promote the whole materials workflow.
 
+## Animation and PNG sequence workflow boundary
+
+`npm run test:live:workflow:2025` passed on 2026-09-06 at 19:37:45 Beijing time against installed source `81e319d`: one test passed, zero skipped, exit 0, total 18.56 seconds. The foundation and scoped Redshift suites were also rerun successfully at 19:39:54 and 19:39:58, respectively.
+
+Newly verified: one isolated document; two Null pivots and two independently converted cube meshes preserving hierarchy; direct rotation keys and interpolated/local/global samples; complete REAL user-data DescID keyframe write/read; user-data object-link write/read and rejected missing link preserving the old value; RS material/light/camera setup; seven 128×128 PNG Beauty frames with distinct SHA-256 hashes; PNG chunk CRC/dimensions/file checks; final status/manifest consistency; save-copy and original document/focus restoration.
+
+This verifies a small **rigid parent-hierarchy animation**, not skeletal skinning, IK/FK or a user-data-driven rig. The new `rs_render_sequence`, `rs_sequence_status` and `rs_sequence_control` tools provide bounded same-session jobs. Cancellation/resume, uncertain-transport handling and explicit-frame failure restoration remain offline-tested; successful sequence execution is the promoted live path. No AOV sequence, long/high-resolution production run, cross-process recovery or simulation-cache guarantee is made. Full details and the earlier corrected angular assertion are in the [workflow validation record](./reports/2026-09-06-workflow-validation.md).
+
 ## Inherited tool catalog
 
-All tools in [TOOLS.md](./TOOLS.md) outside the foundation boundary and the explicitly offline-tested Redshift boundary—including advanced modeling, mesh, document I/O outside the foundation save-copy path, generic node materials, Xpresso, animation, layers, MoGraph, plugin options, generic render operations, and Python escape hatches—remain inherited/unverified on Cinema 4D 2025.3.2 until a dedicated live test records evidence for them.
+All behavior in [TOOLS.md](./TOOLS.md) outside the three explicit verification boundaries remains unverified on Cinema 4D 2025.3.2. This includes untested advanced modeling/mesh operations, other document I/O, generic node materials, Xpresso, other animation options, layers, MoGraph, plugin options, generic render operations and Python escape hatches. Newly added animation-path/reference/sequence failure cases have offline regressions; that is not live compatibility evidence.
 
 `exec_python` is additionally disabled by default and requires `C4D_MCP_ENABLE_EXEC_PYTHON=1` on both the Node and Cinema 4D processes. Creating or editing Python-bearing plugin types requires the independent `C4D_MCP_ENABLE_PYTHON_OPS=1` opt-in on the Cinema 4D side. Enabling either gate changes the security posture and must be recorded with any result.
 

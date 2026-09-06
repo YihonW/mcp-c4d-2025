@@ -84,7 +84,9 @@ let preserveArtifacts = false;
 
 afterAll(async () => {
   await client?.close();
-  if (workDir && !preserveArtifacts) rmSync(workDir, { recursive: true, force: true });
+  if (workDir && process.env.C4D_MCP_KEEP_WORKFLOW_OUTPUT === "1") {
+    console.log(`[${SUITE}] Retained verification output: ${workDir}`);
+  } else if (workDir && !preserveArtifacts) rmSync(workDir, { recursive: true, force: true });
 });
 
 describe.skipIf(!ready)("Cinema 4D 2025.3.2 isolated mechanical-arm workflow", () => {
@@ -221,7 +223,9 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 isolated mechanical-arm workflow", (
         });
         expect(rotation.samples.map((s) => s.frame)).toEqual([0, 6, 12, 24]);
         for (const [index, expected] of [-0.35, 0.175, 0.7, -0.35].entries()) {
-          expect(rotation.samples[index].rot[2]).toBeCloseTo(expected, 4);
+          // MatrixToHPB may normalize negative angles into [0, 2*pi).
+          const difference = rotation.samples[index].rot[2] - expected;
+          expect(Math.atan2(Math.sin(difference), Math.cos(difference))).toBeCloseTo(0, 4);
         }
         const movement = await scoped<TransformSamples>("sample_transform", {
           handle: meshes[1],
