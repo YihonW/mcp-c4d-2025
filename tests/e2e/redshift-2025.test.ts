@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, test } from "vitest";
@@ -162,6 +162,13 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
         await c.call("rs_set_material_pbr", {
           document_name: documentName,
           material: { kind: "material", name: materialName },
+          base_color: [0.2, 0.4, 0.6],
+          metalness: 0.1,
+          roughness: 0.4,
+        });
+        await c.call("rs_set_material_pbr", {
+          document_name: documentName,
+          material: { kind: "material", name: materialName },
           base_color: { path: texturePath },
           metalness: 0.15,
           roughness: 0.35,
@@ -235,6 +242,8 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
           output_format: "png",
           beauty_path: beautyPath,
           make_active: false,
+          // vprsrenderer.h: manual sampling, min 4 / max 16 for this tiny smoke render.
+          redshift_params: { "1101": 4, "1102": 16, "1107": false },
         });
         await c.call("rs_upsert_aov", {
           document_name: documentName,
@@ -245,6 +254,8 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
           multipass_enabled: true,
           direct_file_enabled: true,
           direct_file_path: aovPath,
+          // C4D 2025 drsaov.h: direct AOV format/depth are independent of RDATA_FORMAT.
+          params: { "6002": 2, "6003": 0 }, // PNG, 8-bit integer.
         });
 
         const rendered = await c.call<{
@@ -274,6 +285,13 @@ describe.skipIf(!ready)("Cinema 4D 2025.3.2 Redshift production path", () => {
         expect(rendered.aovs.every((item) => item.size > 0 && existsSync(item.path))).toBe(true);
         expect(rendered.expected_missing).toEqual([]);
         expect(rendered.duration_ms).toBeGreaterThanOrEqual(0);
+        for (const output of [rendered.beauty, ...rendered.aovs]) {
+          const bytes = readFileSync(output.path);
+          expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+          expect(bytes.subarray(12, 16).toString("ascii")).toBe("IHDR");
+          expect(bytes.readUInt32BE(16)).toBe(64);
+          expect(bytes.readUInt32BE(20)).toBe(64);
+        }
 
         const listedAovs = await c.call<{ render_data: { name: string } }>("rs_list_aovs", {
           document_name: documentName,

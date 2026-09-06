@@ -53,14 +53,12 @@ def _primitive(value: object) -> bool:
 
 def _safe_aov_params(aov) -> dict[str, bool | int | float | str]:
     known = set(_runtime_symbols().values())
+    known.add(getattr(c4d, "REDSHIFT_AOV_FILE_EFFECTIVE_PATH", None))
     container = getattr(aov, "GetDataInstance", lambda: None)()
     if container is None:
         return {}
     try:
-        pairs = [
-            (container.GetIndexId(index), container.GetIndexData(index))
-            for index in range(container.GetCount())
-        ]
+        pairs = list(container)
     except Exception:
         return {}
     return {
@@ -72,6 +70,7 @@ def _safe_aov_params(aov) -> dict[str, bool | int | float | str]:
 
 def _aov_record(aov, index: int) -> dict[str, Any]:
     symbols = _runtime_symbols()
+    effective_path_id = getattr(c4d, "REDSHIFT_AOV_FILE_EFFECTIVE_PATH", None)
     type_value = int(aov.GetParameter(symbols["REDSHIFT_AOV_TYPE"]))
     aliases = {value: alias for alias, value in aov_type_aliases().items()}
     record = {
@@ -82,6 +81,9 @@ def _aov_record(aov, index: int) -> dict[str, Any]:
         "multipass_enabled": bool(aov.GetParameter(symbols["REDSHIFT_AOV_MULTIPASS_ENABLED"])),
         "direct_file_enabled": bool(aov.GetParameter(symbols["REDSHIFT_AOV_FILE_ENABLED"])),
         "direct_file_path": str(aov.GetParameter(symbols["REDSHIFT_AOV_FILE_PATH"]) or ""),
+        "direct_file_effective_path": (
+            str(aov.GetParameter(effective_path_id) or "") if effective_path_id is not None else ""
+        ),
         "params": _safe_aov_params(aov),
     }
     if type_value in aliases:
@@ -165,6 +167,8 @@ def _normalize_input(params: dict[str, Any]) -> tuple[int, str, dict[str, Any]]:
             raise ValueError("params values must be finite primitive values")
         if parameter in managed_parameters:
             raise ValueError(f"params cannot override managed AOV parameter {parameter}")
+        if parameter == getattr(c4d, "REDSHIFT_AOV_FILE_EFFECTIVE_PATH", None):
+            raise ValueError(f"params cannot override read-only AOV parameter {parameter}")
         normalized_params[parameter] = value
     values["params"] = normalized_params
     return type_value, name.strip(), values

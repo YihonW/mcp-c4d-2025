@@ -328,6 +328,11 @@ class FakePbrGraphDescription(FakeGraphDescription):
 
     def ApplyDescription(self, graph, description, *, nodeSpace):
         self.graph_mutation_calls.append((graph, description, str(nodeSpace)))
+        # C4D 2025 GraphDescription converts tuple literals to vectors, not lists.
+        for operation in description:
+            for value in operation.values():
+                if isinstance(value, list):
+                    raise TypeError(f"Unsupported graph description value type: {value}")
         if self.partial_write_on_apply:
             graph.AddChild("orphan", NODE_ASSETS["texture"], {})
             raise RuntimeError("node type reference is not associated with any IDs")
@@ -602,7 +607,7 @@ class RedshiftMaterialsTest(unittest.TestCase):
         self.assertEqual(
             description,
             [
-                {"$query": {"$id": "standard"}, "#~.base_color": [0.1, 0.2, 0.3]},
+                {"$query": {"$id": "standard"}, "#~.base_color": (0.1, 0.2, 0.3)},
                 {"$query": {"$id": "standard"}, "#~.metalness": 0.2},
                 {"$query": {"$id": "standard"}, "#~.refl_roughness": 0.35},
             ],

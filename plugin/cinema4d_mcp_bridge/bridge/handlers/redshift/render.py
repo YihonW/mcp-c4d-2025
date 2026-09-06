@@ -136,7 +136,7 @@ def _render_settings(document, values: dict[str, Any]) -> dict[object, object]:
 def _set_video_post_parameter(video_post, parameter: int, value: object) -> None:
     setter = getattr(video_post, "SetParameter", None)
     if callable(setter):
-        if setter(parameter, value) is False:
+        if setter(parameter, value, _symbol("DESCFLAGS_SET_0")) is False:
             raise RuntimeError(f"failed to set Redshift parameter {parameter}")
         return
     video_post[parameter] = value
@@ -296,10 +296,12 @@ def _expected_aov_outputs(redshift, video_post, *, overwrite: bool) -> list[dict
     for record in records:
         if not record["enabled"] or not record["direct_file_enabled"]:
             continue
-        path = record["direct_file_path"]
+        path = record["direct_file_effective_path"]
         if not path:
-            raise ValueError(f"enabled direct AOV {record['name']!r} requires an output path")
-        record["direct_file_path"] = require_output_path(path, overwrite=overwrite)
+            raise ValueError(
+                f"enabled direct AOV {record['name']!r} has no SDK effective output path"
+            )
+        record["direct_file_effective_path"] = require_output_path(path, overwrite=overwrite)
         expected.append(record)
     return expected
 
@@ -370,7 +372,7 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
         rendered_aovs = []
         expected_missing = []
         for record in expected_aovs:
-            path = record["direct_file_path"]
+            path = record["direct_file_effective_path"]
             try:
                 size = os.stat(path).st_size
             except OSError as exc:

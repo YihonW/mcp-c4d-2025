@@ -41,14 +41,8 @@ class FakeContainer:
     def __init__(self, values):
         self.values = values
 
-    def GetCount(self):
-        return len(self.values)
-
-    def GetIndexId(self, index):
-        return list(self.values)[index]
-
-    def GetIndexData(self, index):
-        return self.values[list(self.values)[index]]
+    def __iter__(self):
+        return iter(self.values.items())
 
 
 class FakeRenderData:
@@ -170,6 +164,7 @@ class RedshiftAovsTest(unittest.TestCase):
             "REDSHIFT_AOV_MULTIPASS_ENABLED": 1003,
             "REDSHIFT_AOV_FILE_ENABLED": 1004,
             "REDSHIFT_AOV_FILE_PATH": 1005,
+            "REDSHIFT_AOV_FILE_EFFECTIVE_PATH": 6008,
             "REDSHIFT_AOV_TYPE_BEAUTY": 10,
             "REDSHIFT_AOV_TYPE_DIFFUSE_LIGHTING": 11,
             "REDSHIFT_AOV_TYPE_DEPTH": 12,
@@ -222,6 +217,7 @@ class RedshiftAovsTest(unittest.TestCase):
                     "multipass_enabled": True,
                     "direct_file_enabled": False,
                     "direct_file_path": "",
+                    "direct_file_effective_path": "",
                     "params": {"9001": 1.25, "9002": "safe"},
                 }
             ],
@@ -234,6 +230,33 @@ class RedshiftAovsTest(unittest.TestCase):
 
         self.assertEqual(result["aovs"], [])
         self.assertEqual(result["count"], 0)
+
+    def test_list_exposes_effective_path_separately_from_writable_parameters(self):
+        original = self._aov()
+        original.values[self.c4d.REDSHIFT_AOV_FILE_PATH] = "$filepath$filename_$pass"
+        original.values[self.c4d.REDSHIFT_AOV_FILE_EFFECTIVE_PATH] = "C:/renders/Beauty.exr"
+        self.aovs = [original]
+
+        record = self._load().handle_rs_list_aovs({})["aovs"][0]
+
+        self.assertEqual(record["direct_file_path"], "$filepath$filename_$pass")
+        self.assertEqual(record["direct_file_effective_path"], "C:/renders/Beauty.exr")
+        self.assertEqual(record["params"], {"9001": 1.25, "9002": "safe"})
+
+    def test_clone_less_upsert_preserves_primitive_params_without_writing_effective_path(self):
+        original = self._aov()
+        original.GetClone = None
+        original.values[self.c4d.REDSHIFT_AOV_FILE_EFFECTIVE_PATH] = "C:/renders/Beauty.exr"
+        self.aovs = [original]
+
+        self._load().handle_rs_upsert_aov({"type": "beauty", "name": "Beauty", "enabled": False})
+
+        copied = self.set_calls[0][0]
+        self.assertIsNot(copied, original)
+        self.assertEqual(copied.GetParameter(9001), 1.25)
+        self.assertEqual(copied.GetParameter(9002), "safe")
+        self.assertNotIn(9003, copied.values)
+        self.assertNotIn(self.c4d.REDSHIFT_AOV_FILE_EFFECTIVE_PATH, copied.values)
 
     def test_list_uses_exact_named_render_data(self):
         self.aovs = [self._aov(name="FinalBeauty")]
@@ -330,6 +353,14 @@ class RedshiftAovsTest(unittest.TestCase):
                     "type": "beauty",
                     "name": "Beauty",
                     "params": {str(self.c4d.REDSHIFT_AOV_TYPE): 44},
+                }
+            )
+        with self.assertRaisesRegex(ValueError, "read-only AOV parameter"):
+            aovs.handle_rs_upsert_aov(
+                {
+                    "type": "beauty",
+                    "name": "Beauty",
+                    "params": {str(self.c4d.REDSHIFT_AOV_FILE_EFFECTIVE_PATH): "C:/other.exr"},
                 }
             )
         self.assertEqual(self.set_calls, [])

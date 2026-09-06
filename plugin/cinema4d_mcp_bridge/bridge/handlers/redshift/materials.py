@@ -450,9 +450,9 @@ def handle_rs_set_material_pbr(params: dict[str, object]) -> dict[str, object]:
                 operations.append(
                     {
                         "$query": {"$id": standard_id},
-                        _STANDARD_PORTS[channel]: [
+                        _STANDARD_PORTS[channel]: tuple(
                             _number(component, "base_color") for component in value
-                        ],
+                        ),
                     }
                 )
             else:
