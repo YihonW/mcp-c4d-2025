@@ -478,9 +478,15 @@ class RedshiftRenderTest(unittest.TestCase):
         render = self._load()
         insert_count = len(self.document.insert_calls)
 
-        with self.assertRaisesRegex(ValueError, "parent directory"):
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            self.assertRaisesRegex(ValueError, "parent directory"),
+        ):
             render.handle_rs_configure_render(
-                {"name": "Bad Path", "beauty_path": os.path.join("C:\\missing-parent", "x.png")}
+                {
+                    "name": "Bad Path",
+                    "beauty_path": str(Path(temp_dir).resolve() / "missing-parent" / "x.png"),
+                }
             )
         del self.redshift.FindAddVideoPost
         with self.assertRaisesRegex(RuntimeError, "FindAddVideoPost"):

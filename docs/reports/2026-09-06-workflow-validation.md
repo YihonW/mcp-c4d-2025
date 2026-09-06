@@ -17,6 +17,8 @@
 
 The first GitHub CI run exposed an inherited test-platform mismatch: eleven Windows installer CLI fixture tests were executed under Linux and rejected its non-drive-letter temporary paths. CI was changed to a Linux/Windows matrix; only the Windows filesystem CLI suite is explicitly skipped on non-Windows runners. The pure path-policy tests and all other unit tests run on both, and Windows still runs all 111 tests. This does not change the installer or installed C4D code.
 
+The next Linux run also exposed a Windows-only hardcoded path in a Python missing-parent test. Its fixture now uses a platform-native absolute temporary directory with a nonexistent child; the same rejection and zero-write assertions are retained, with no production-code change.
+
 New regressions cover full animation paths, selector/range validation, BOOL data keys, interpolation enum zero, undo recording, reference preflight, editable-object hierarchy preservation, frame/state restoration, cancellation races, PNG chunk CRC validation and conservative transport-failure handling.
 
 ## Live results
