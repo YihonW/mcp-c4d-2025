@@ -62,6 +62,8 @@ Installation update (2026-09-05 20:52 Beijing time): the node-ID fix from `02340
 
 Retest update (2026-09-05 20:57 Beijing time): the installed `023406e` candidate still failed at standard-material matching, before rendering. A separate, immediately cleaned diagnostic document confirmed that both expected nodes exist, but their asset IDs were still stringified as `(asset-id,)`. Maxon's native pair is indexable without being a Python tuple/list, so the previous type check missed it. The latest source indexes the attribute directly, adds a non-builtin pair regression and an exact node-ID gate before live PBR writes, and passes 96 Python plus 73 TypeScript unit tests. This latest source is not yet installed or live-verified. Both temporary documents used during this retest/diagnostic were closed; no user document was closed or saved.
 
+Installation update (2026-09-06 18:14 Beijing time): the native-pair fix from `9dbc0e6` is now installed, following a reviewed dry-run and confirmation that C4D was fully closed. All 70 installed files match the source, and all 70 previous files were preserved in an external, hash-verified backup. No live test ran during installation; node-ID readback and the strict Redshift production path remain pending manual startup.
+
 ## Inherited tool catalog
 
 All tools in [TOOLS.md](./TOOLS.md) outside the foundation boundary and the explicitly offline-tested Redshift boundary—including advanced modeling, mesh, document I/O outside the foundation save-copy path, generic node materials, Xpresso, animation, layers, MoGraph, plugin options, generic render operations, and Python escape hatches—remain inherited/unverified on Cinema 4D 2025.3.2 until a dedicated live test records evidence for them.
