@@ -184,7 +184,9 @@ describe("buildInstallPlan", () => {
   });
 });
 
-describe("install-c4d-plugin CLI", () => {
+// These real filesystem fixtures require Windows drive paths/junctions; Windows CI runs them.
+// The pure path-function suites above still run on every platform.
+describe.skipIf(process.platform !== "win32")("install-c4d-plugin CLI", () => {
   test("defaults to dry-run without changing any entry in the temporary tree", () => {
     const sandbox = createInstallerSandbox();
     const before = snapshotTree(sandbox.root);
