@@ -4,20 +4,21 @@ This fork targets Cinema 4D 2025.3.2. A target is not a support claim: foundatio
 
 ## Current status
 
-| Runtime            | Status                                                   | Evidence boundary                                                                                  |
-| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Cinema 4D 2025.3.2 | **Foundation live-verified on Windows x64 (2026-09-05)** | Strict suite: one passing foundation test, zero skips, exit `0`; exact boundary is listed below.   |
-| Cinema 4D 2024.x   | **Inherited / unverified**                               | No strict live suite is defined for this release.                                                  |
-| Cinema 4D 2026.x   | **Inherited / unverified in this fork**                  | Upstream observations may exist, but they are not current live evidence for this fork or for 2025. |
-| Other releases     | **Unsupported / unverified**                             | No compatibility evidence is recorded.                                                             |
+| Runtime            | Status                                                                       | Evidence boundary                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Cinema 4D 2025.3.2 | **Foundation and scoped Redshift live-verified on Windows x64 (2026-09-06)** | Both strict suites: one passing test each, zero skips, exit `0`; exact boundaries are listed below. |
+| Cinema 4D 2024.x   | **Inherited / unverified**                                                   | No strict live suite is defined for this release.                                                   |
+| Cinema 4D 2026.x   | **Inherited / unverified in this fork**                                      | Upstream observations may exist, but they are not current live evidence for this fork or for 2025.  |
+| Other releases     | **Unsupported / unverified**                                                 | No compatibility evidence is recorded.                                                              |
 
-Only the exact foundation behaviors below are claimed as live-verified. The 11 Redshift tools are offline-tested but have not yet passed the strict live gate against the installed candidate. No complete tool group and no blanket claim for all 76 tools is implied.
+Only the exact foundation and Redshift behaviors below are claimed as live-verified. Installed source `4a62967` passed both strict suites on 2026-09-06. The remaining behaviors of the 11 Redshift tools are offline-tested only. No complete tool group and no blanket claim for all 76 tools is implied.
 
 ## Evidence labels
 
 - **Inherited / unverified:** implementation or documentation carried from the existing `mcp-cinema4d` codebase, or a tool not exercised by the strict foundation suite. Presence in [TOOLS.md](./TOOLS.md) only means the tool is registered in source.
 - **Foundation live-verified:** the exact behavior was exercised by `npm run test:live:2025`, the command exited `0`, the bridge and security snapshot matched the recorded runtime below, and the foundation test had no skip.
 - **Redshift read-only verified:** authenticated capability discovery succeeded on the recorded runtime. This does not verify scene mutation or rendering.
+- **Redshift live-verified (scoped):** the exact production path below passed the strict Redshift suite with zero skips, verified PNG output, and restored document/render-data state. Unexercised options and failure paths remain offline-tested only.
 - **Redshift offline-tested:** TypeScript schemas and registration plus Python bridge behavior pass fake-runtime regression tests, build, lint, and formatting gates. No real Cinema 4D or Redshift compatibility claim is made until the strict Redshift live gate passes without skips.
 - **Unsupported / unverified:** no accepted live evidence exists. This label does not predict whether a tool happens to work.
 
@@ -40,21 +41,28 @@ Recorded run: Windows x64, Cinema 4D raw version `2025302` (2025.3.2), Node.js 2
 
 Latest recorded run: the installed source from `a59a10a` passed the same strict suite on 2026-09-05 at 20:42 Beijing time, with **token authentication enabled**, `exec_python` disabled, and the same exact C4D/bridge versions. One test passed, zero skipped, exit `0`. A preceding attempt was rejected before document insertion because the active document was blank. After switching focus to the other already-open, non-blank document, the successful run preserved both original documents and cleaned its single temporary document. See the [integration record](./reports/2026-09-05-redshift-integration.md).
 
+Latest candidate retest: `4a62967` passed on 2026-09-06 at 18:55:34 Beijing time, one test passed, zero skipped, exit `0`, duration 3.93 seconds. Token authentication remained enabled and `exec_python` disabled. Its single temporary document was closed; the original checkpoint and focus were preserved. See the [autonomous validation record](./reports/2026-09-06-autonomous-validation.md).
+
 Even after this suite passes, the claim is limited to the exact Cinema 4D build, operating system, bridge version, security posture, and foundation path tested. It does **not** promote all 76 tools or any complete tool group.
 
 ## Redshift verification boundary
 
-The following tools are implemented and offline-tested. Only capability discovery has passed a real read-only check; the complete Redshift production path has not passed its strict live gate:
+The following tools are implemented and offline-tested. The installed candidate also passed the scoped production path listed below; this does not verify every option of each tool:
 
-| Area                 | Tools                                                             | Status                      |
-| -------------------- | ----------------------------------------------------------------- | --------------------------- |
-| Capability discovery | `rs_get_capabilities`                                             | Redshift read-only verified |
-| Materials            | `rs_create_material`, `rs_set_material_pbr`                       | Redshift offline-tested     |
-| Lights and camera    | `rs_create_light`, `rs_set_camera`                                | Redshift offline-tested     |
-| AOVs                 | `rs_list_aovs`, `rs_upsert_aov`, `rs_remove_aov`, `rs_clear_aovs` | Redshift offline-tested     |
-| Render setup/output  | `rs_configure_render`, `rs_render`                                | Redshift offline-tested     |
+| Area                   | Tools                                       | Status                          |
+| ---------------------- | ------------------------------------------- | ------------------------------- |
+| Capability discovery   | `rs_get_capabilities`                       | Redshift read-only verified     |
+| Materials              | `rs_create_material`, `rs_set_material_pbr` | Redshift live-verified (scoped) |
+| Lights and camera      | `rs_create_light`, `rs_set_camera`          | Redshift live-verified (scoped) |
+| AOV list/create/update | `rs_list_aovs`, `rs_upsert_aov`             | Redshift live-verified (scoped) |
+| AOV removal/clear      | `rs_remove_aov`, `rs_clear_aovs`            | Redshift offline-tested         |
+| Render setup/output    | `rs_configure_render`, `rs_render`          | Redshift live-verified (scoped) |
 
-`npm run test:live:redshift:2025` is defined but has not yet been accepted as live evidence. The release candidate must be installed through the reviewed installer, Cinema 4D must be restarted manually with saved user work, token authentication must be enabled, and the command must finish with no skip before these rows can be promoted.
+Accepted run: `npm run test:live:redshift:2025`, installed source `4a62967`, 2026-09-06 at 18:55:09 Beijing time, one test passed, zero skipped, exit `0`, duration 8.04 seconds. Runtime: Windows x64, C4D `2025302` / `2025.3.2`, Python `3.11.4`, Node.js `24.18.0`, bridge `0.4.0`, loopback, token authentication enabled, `exec_python` disabled; Redshift renderer `1036219`, 929 node templates and eight AOV aliases.
+
+Verified scope: one isolated non-active document; exact standard/output node IDs; constant RGB, metalness and roughness plus a base-color texture; Area and textured Dome creation; camera position; sphere material assignment; rejected missing-texture input without graph changes; inactive named 64×64 PNG render settings with explicit sampling parameters; depth AOV creation and existing-AOV update retaining PNG format/depth; Beauty and AOV PNG signatures/IHDR dimensions; no expected missing output; restoration of document state, active RenderData, original documents and focus. Normal/displacement textures, other light types, other AOV types/formats, removal/clear, arbitrary node graphs and all remaining options are **not** promoted by this run.
+
+Installation used the reviewed installer with C4D fully stopped and complete hash-verified external backups. The user authorized autonomous handling, so normal save/quit/start commands were performed by the agent, not forced process termination. A unique temporary Null preserved the original blank checkpoint during tests and was removed afterward. See the [full record](./reports/2026-09-06-autonomous-validation.md); prior unsuccessful attempts are retained below as historical evidence.
 
 On 2026-09-05, the first candidate's read-only checks found an unresolved asset-type declaration and missing light symbols before creating any test document. Those fixes were installed and, after a manual restart, authenticated capability discovery succeeded: 929 node templates, all five light types, eight AOV aliases, and renderer/module/camera/render support. The strict Redshift suite then failed at `rs_set_material_pbr` with `Standard Material node not found in Redshift graph`, before rendering; its temporary document was cleaned. The SDK returns an `(asset ID, version)` pair, which the code incorrectly converted as a whole to a string. Source now extracts the ID for graph listing, matching, and port lookup, with offline regressions passing; this latest fix still requires reviewed installation and a manual restart before another live test. See the [integration record](./reports/2026-09-05-redshift-integration.md).
 
