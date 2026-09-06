@@ -251,11 +251,21 @@ def _normalize_render_input(params: dict[str, Any]) -> dict[str, Any]:
     overwrite = params.get("overwrite", False)
     if not isinstance(overwrite, bool):
         raise ValueError("overwrite must be a boolean")
+    sequence_frame = params.get("sequence_frame", False)
+    if not isinstance(sequence_frame, bool):
+        raise ValueError("sequence_frame must be a boolean")
+    frame = params.get("frame")
+    if "frame" in params and (not isinstance(frame, int) or isinstance(frame, bool)):
+        raise ValueError("frame must be an integer")
+    if sequence_frame and frame is None:
+        raise ValueError("sequence_frame requires frame")
     return {
         "document_name": document_name,
         "render_data_name": render_data_name.strip(),
         "output_path": params.get("output_path"),
         "overwrite": overwrite,
+        "frame": frame,
+        "sequence_frame": sequence_frame,
     }
 
 
@@ -288,13 +298,19 @@ def _allocate_bitmap(width: int, height: int):
     return bitmap
 
 
-def _expected_aov_outputs(redshift, video_post, *, overwrite: bool) -> list[dict[str, Any]]:
+def _expected_aov_outputs(
+    redshift, video_post, *, overwrite: bool, sequence_frame: bool = False
+) -> list[dict[str, Any]]:
     records = [
         _aov_record(aov, index)
         for index, aov in enumerate(list(redshift.RendererGetAOVs(video_post)))
     ]
     expected = []
     for record in records:
+        if sequence_frame and record["enabled"]:
+            raise ValueError(
+                "sequence_frame requires no enabled AOVs; disable them explicitly first"
+            )
         if not record["enabled"] or not record["direct_file_enabled"]:
             continue
         path = record["direct_file_effective_path"]
@@ -307,6 +323,13 @@ def _expected_aov_outputs(redshift, video_post, *, overwrite: bool) -> list[dict
     return expected
 
 
+def _set_evaluated_time(document, target_time, flags) -> None:
+    # SetTime alone does not evaluate animation, expressions, or caches.
+    document.SetTime(target_time)
+    if document.ExecutePasses(None, True, True, True, flags) is False:
+        raise RuntimeError("failed to evaluate document after changing render frame")
+
+
 def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
     """Run one guarded synchronous Redshift render and report real output files."""
     values = _normalize_render_input(params)
@@ -317,6 +340,7 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
 
     with (
         document_scope(values["document_name"], required=True) as document,
+        ExitStack() as frame_scope,
         ExitStack() as render_scope,
     ):
         matches = _render_data_matches(document, values["render_data_name"])
@@ -335,7 +359,12 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
         previous_render_data = document.GetActiveRenderData()
         render_scope.callback(document.SetActiveRenderData, previous_render_data)
         document.SetActiveRenderData(render_data)
-        expected_aovs = _expected_aov_outputs(redshift, video_post, overwrite=values["overwrite"])
+        expected_aovs = _expected_aov_outputs(
+            redshift,
+            video_post,
+            overwrite=values["overwrite"],
+            sequence_frame=values["sequence_frame"],
+        )
 
         width = int(render_data[_symbol("RDATA_XRES")])
         height = int(render_data[_symbol("RDATA_YRES")])
@@ -344,11 +373,27 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
         output_format = render_data[_symbol("RDATA_FORMAT")]
         if not isinstance(output_format, int) or isinstance(output_format, bool):
             raise ValueError("RenderData output format must be an installed filter id")
+        if values["sequence_frame"] and (
+            output_format != _symbol("FILTER_PNG")
+            or os.path.splitext(output_path)[1].lower() != ".png"
+        ):
+            raise ValueError("sequence_frame requires PNG RenderData format and a .png output path")
 
         clone = _clone_render_data(render_data)
         if clone is None:
             raise RuntimeError("failed to clone RenderData for formal render")
         clone[_symbol("RDATA_PATH")] = output_path
+        frame_time = None
+        if values["frame"] is not None:
+            frame_time = _symbol("BaseTime")(values["frame"], document.GetFps())
+            clone[_symbol("RDATA_FRAMESEQUENCE")] = _symbol("RDATA_FRAMESEQUENCE_CURRENTFRAME")
+            clone[_symbol("RDATA_FRAMEFROM")] = frame_time
+            clone[_symbol("RDATA_FRAMETO")] = frame_time
+            clone[_symbol("RDATA_FRAMESTEP")] = 1
+            # The explicit-frame caller owns Beauty naming. Prevent the renderer
+            # from also writing auto-numbered Beauty or inherited multipass paths.
+            clone[_symbol("RDATA_SAVEIMAGE")] = False
+            clone[_symbol("RDATA_MULTIPASS_SAVEIMAGE")] = False
         get_settings = getattr(clone, "GetDataInstance", None)
         if not callable(get_settings):
             raise RuntimeError("RenderData clone settings are unavailable")
@@ -357,6 +402,14 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
         render_document = getattr(documents, "RenderDocument", None)
         if not callable(render_document):
             raise RuntimeError("Cinema 4D RenderDocument API is unavailable")
+        if frame_time is not None:
+            render_flags = _symbol("BUILDFLAGS_EXTERNALRENDERER")
+            restore_flags = _symbol("BUILDFLAGS_NONE")
+            original_time = document.GetTime()
+            # Restore active RenderData first, then reevaluate the original time
+            # under the original settings, including on render/save failures.
+            frame_scope.callback(_set_evaluated_time, document, original_time, restore_flags)
+            _set_evaluated_time(document, frame_time, render_flags)
         started = time.perf_counter()
         render_result = render_document(
             document,
@@ -417,4 +470,5 @@ def handle_rs_render(params: dict[str, Any]) -> dict[str, Any]:
             "expected_missing": expected_missing,
             "duration_ms": duration_ms,
             "warnings": warnings,
+            **({"frame": values["frame"]} if values["frame"] is not None else {}),
         }

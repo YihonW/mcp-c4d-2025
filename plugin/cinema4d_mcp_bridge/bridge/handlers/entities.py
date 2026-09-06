@@ -302,6 +302,34 @@ def handle_get_params(params: dict[str, Any]) -> dict[str, Any]:
     return {"values": out}
 
 
+def _resolve_parameter_link(obj, path: Any, value: dict[str, Any]):
+    """Validate a link against the actual description, not caller-supplied dtypes."""
+    if set(value) != {"link"}:
+        raise ValueError("link value must contain only 'link'")
+    did, normalized = _path_to_desc_id(obj, path)
+    depth = did.GetDepth()
+    matches = [
+        paramid
+        for _bc, paramid, _groupid in obj.GetDescription(c4d.DESCFLAGS_DESC_NONE)
+        if paramid.GetDepth() == depth
+        and all(paramid[index].id == did[index].id for index in range(depth))
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"link parameter path is missing or ambiguous: {normalized}")
+    actual_did = matches[0]
+    if actual_did[depth - 1].dtype != c4d.DTYPE_BASELISTLINK:
+        raise ValueError("link values require a DTYPE_BASELISTLINK parameter")
+    link_handle = value["link"]
+    target = None
+    if link_handle is not None:
+        target = _resolve_handle(link_handle)
+        if target is None:
+            raise ValueError(f"link handle not resolved: {link_handle}")
+        if not isinstance(target, c4d.BaseList2D):
+            raise ValueError("link handle must resolve to a BaseList2D entity")
+    return actual_did, normalized, target
+
+
 def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
     """Write parameters by id or DescID path, wrapped in a single undo group.
 
@@ -310,6 +338,8 @@ def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
       values: list of ``{path, value}`` entries — ``path`` accepts the same
               forms as ``get_params.ids``. Lists of 3 numbers auto-coerce
               into ``c4d.Vector`` for vector-typed destinations.
+              ``{link: handle | None}`` sets or clears a DTYPE_BASELISTLINK.
+              All link entries are validated before any parameter is written.
 
     Returns ``{applied: [{path, value}], errors: [{path, error}]}``.
     """
@@ -340,13 +370,33 @@ def handle_set_params(params: dict[str, Any]) -> dict[str, Any]:
 
     applied: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+    links = {}
+    for index, entry in enumerate(raw_values):
+        value = entry.get("value") if isinstance(entry, dict) else None
+        if isinstance(value, dict) and "link" in value:
+            try:
+                links[index] = _resolve_parameter_link(obj, entry.get("path"), value)
+            except Exception as exc:
+                errors.append({"path": entry.get("path"), "error": f"{type(exc).__name__}: {exc}"})
+    if errors:
+        return {"applied": [], "errors": errors}
+
     if use_undo:
         doc.StartUndo()
     try:
         if use_undo:
             with contextlib.suppress(Exception):
                 doc.AddUndo(c4d.UNDOTYPE_CHANGE, obj)
-        for entry in raw_values:
+        for index, entry in enumerate(raw_values):
+            if index in links:
+                did, normalized, target = links[index]
+                try:
+                    if not obj.SetParameter(did, target, c4d.DESCFLAGS_SET_NONE):
+                        raise RuntimeError("SetParameter rejected link value")
+                    applied.append({"path": normalized, "value": _json_safe(obj[did])})
+                except Exception as exc:
+                    errors.append({"path": normalized, "error": f"{type(exc).__name__}: {exc}"})
+                continue
             if not isinstance(entry, dict) or "path" not in entry or "value" not in entry:
                 errors.append({"entry": entry, "error": "must be {path, value}"})
                 continue

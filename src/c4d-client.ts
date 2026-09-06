@@ -15,6 +15,9 @@ export interface C4DResponse {
   error?: string;
 }
 
+/** An explicit bridge error response, distinct from an unknown transport outcome. */
+export class C4DCommandError extends Error {}
+
 export interface C4DClientOptions {
   host?: string;
   port?: number;
@@ -108,7 +111,7 @@ export class C4DClient {
     if (msg.status === "ok") {
       pending.resolve(msg.result);
     } else {
-      pending.reject(new Error(msg.error ?? "unknown error from Cinema 4D"));
+      pending.reject(new C4DCommandError(msg.error ?? "unknown error from Cinema 4D"));
     }
   }
 

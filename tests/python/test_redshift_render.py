@@ -150,6 +150,11 @@ class FakeRenderDocument:
         self.active_render_data = None
         self.insert_calls = []
         self.active_changes = []
+        self.time = FakeBaseTime(3, 30)
+        self.time_changes = []
+        self.execute_calls = []
+        self.execute_render_data = []
+        self.execute_results = []
 
     def GetDocumentName(self):
         return self.name
@@ -159,6 +164,21 @@ class FakeRenderDocument:
 
     def GetFps(self):
         return 30
+
+    def GetTime(self):
+        return self.time
+
+    def SetTime(self, value):
+        self.time = value
+        self.time_changes.append(value)
+
+    def ExecutePasses(self, thread, animation, expressions, caches, flags):
+        self.execute_calls.append((self.time, thread, animation, expressions, caches, flags))
+        self.execute_render_data.append(self.GetActiveRenderData())
+        result = self.execute_results.pop(0) if self.execute_results else True
+        if isinstance(result, Exception):
+            raise result
+        return result
 
     def GetFirstRenderData(self):
         return self.render_data[0] if self.render_data else None
@@ -208,6 +228,7 @@ class RedshiftRenderTest(unittest.TestCase):
         self.return_none_video_post = False
         self.aovs = []
         self.render_calls = []
+        self.render_times = []
         self.expected_render_data = None
         self.render_exception = None
         self.render_result = self.c4d.RENDERRESULT_OK
@@ -243,11 +264,14 @@ class RedshiftRenderTest(unittest.TestCase):
         def render_document(document, settings, bitmap, flags):
             self.assertIs(document.GetActiveRenderData(), self.expected_render_data)
             self.render_calls.append((document, settings, bitmap, flags))
+            self.render_times.append(document.GetTime())
             if self.render_exception is not None:
                 raise self.render_exception
             if self.render_result == self.c4d.RENDERRESULT_OK and self.write_aov_outputs:
                 for aov in self.aovs:
-                    if aov.GetParameter(self.c4d.REDSHIFT_AOV_FILE_ENABLED):
+                    if aov.GetParameter(self.c4d.REDSHIFT_AOV_ENABLED) and aov.GetParameter(
+                        self.c4d.REDSHIFT_AOV_FILE_ENABLED
+                    ):
                         path = aov.GetParameter(self.c4d.REDSHIFT_AOV_FILE_EFFECTIVE_PATH)
                         if path:
                             Path(path).write_bytes(b"aov-output")
@@ -284,6 +308,8 @@ class RedshiftRenderTest(unittest.TestCase):
 
     def _install_render_symbols(self):
         values = {
+            "BUILDFLAGS_NONE": 0,
+            "BUILDFLAGS_EXTERNALRENDERER": 2,
             "COPYFLAGS_0": 0,
             "DESCFLAGS_SET_0": 0,
             "FILTER_EXR": 1016606,
@@ -295,8 +321,10 @@ class RedshiftRenderTest(unittest.TestCase):
             "RDATA_FRAMESEQUENCE": 5016,
             "RDATA_FRAMESEQUENCE_CURRENTFRAME": 1,
             "RDATA_FRAMETO": 5018,
+            "RDATA_FRAMESTEP": 5019,
             "RDATA_MULTIPASS_FILENAME": 5206,
             "RDATA_MULTIPASS_SAVEFORMAT": 5203,
+            "RDATA_MULTIPASS_SAVEIMAGE": 5200,
             "RDATA_PATH": 5041,
             "RDATA_RENDERENGINE": 5300,
             "RDATA_XRES": 5008,
@@ -771,6 +799,251 @@ class RedshiftRenderTest(unittest.TestCase):
             self.assertEqual(result["aovs"], [])
             self.assertEqual(result["expected_missing"][0]["path"], aov_path)
             self.assertTrue(result["warnings"])
+
+    def test_explicit_frame_evaluates_and_restores_time_without_changing_source_settings(self):
+        source = self._configured_render_data()
+        source[self.c4d.RDATA_SAVEIMAGE] = True
+        source[self.c4d.RDATA_MULTIPASS_SAVEIMAGE] = True
+        source[self.c4d.RDATA_MULTIPASS_FILENAME] = "untouched-multipass-path"
+        source[self.c4d.RDATA_FRAMEFROM] = FakeBaseTime(1, 30)
+        source[self.c4d.RDATA_FRAMETO] = FakeBaseTime(90, 30)
+        source[self.c4d.RDATA_FRAMESTEP] = 5
+        source_values = dict(source.values)
+        original_time = self.document.GetTime()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self._load().handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": os.path.join(temp_dir, "frame_0012.png"),
+                    "force": True,
+                    "frame": 12,
+                    "sequence_frame": True,
+                }
+            )
+            self.assertEqual(sorted(os.listdir(temp_dir)), ["frame_0012.png"])
+
+        settings = self.render_calls[0][1]
+        self.assertEqual(result["frame"], 12)
+        self.assertEqual(result["aovs"], [])
+        self.assertEqual(self.render_times, [FakeBaseTime(12, 30)])
+        self.assertEqual(settings[self.c4d.RDATA_FRAMEFROM], FakeBaseTime(12, 30))
+        self.assertEqual(settings[self.c4d.RDATA_FRAMETO], FakeBaseTime(12, 30))
+        self.assertEqual(settings[self.c4d.RDATA_FRAMESTEP], 1)
+        self.assertEqual(
+            settings[self.c4d.RDATA_FRAMESEQUENCE], self.c4d.RDATA_FRAMESEQUENCE_CURRENTFRAME
+        )
+        self.assertIs(settings[self.c4d.RDATA_SAVEIMAGE], False)
+        self.assertIs(settings[self.c4d.RDATA_MULTIPASS_SAVEIMAGE], False)
+        self.assertEqual(source.values, source_values)
+        self.assertEqual(self.document.GetTime(), original_time)
+        self.assertEqual(
+            self.document.execute_calls,
+            [
+                (
+                    FakeBaseTime(12, 30),
+                    None,
+                    True,
+                    True,
+                    True,
+                    self.c4d.BUILDFLAGS_EXTERNALRENDERER,
+                ),
+                (original_time, None, True, True, True, self.c4d.BUILDFLAGS_NONE),
+            ],
+        )
+        self.assertIs(self.document.GetActiveRenderData(), self.user_render_data)
+        self.assertEqual(self.document.execute_render_data, [source, self.user_render_data])
+
+    def test_explicit_frame_without_sequence_mode_keeps_aov_support(self):
+        self._configured_render_data()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.aovs = [self._aov(os.path.join(temp_dir, "depth.png"))]
+            result = self._load().handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": os.path.join(temp_dir, "beauty.png"),
+                    "force": True,
+                    "frame": -2,
+                }
+            )
+        self.assertEqual(result["frame"], -2)
+        self.assertEqual(len(result["aovs"]), 1)
+        self.assertEqual(self.document.GetTime(), FakeBaseTime(3, 30))
+
+    def test_frame_and_sequence_input_validation_precedes_scene_changes(self):
+        self._configured_render_data()
+        cases = [
+            ({"frame": True}, "frame must"),
+            ({"frame": 1.5}, "frame must"),
+            ({"frame": "2"}, "frame must"),
+            ({"frame": None}, "frame must"),
+            ({"sequence_frame": "true"}, "sequence_frame must"),
+            ({"sequence_frame": True}, "requires frame"),
+        ]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for extra, message in cases:
+                with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, message):
+                    self._load().handle_rs_render(
+                        {
+                            "document_name": "main",
+                            "render_data_name": "Final",
+                            "output_path": os.path.join(temp_dir, "frame.png"),
+                            "force": True,
+                            **extra,
+                        }
+                    )
+        self.assertEqual(self.render_calls, [])
+        self.assertEqual(self.document.active_changes, [])
+        self.assertEqual(self.document.time_changes, [])
+
+    def test_sequence_rejects_all_enabled_aovs_before_time_or_file_changes(self):
+        self._configured_render_data()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for direct in (True, False):
+                aov = self._aov(os.path.join(temp_dir, "aov.png"))
+                aov.values[self.c4d.REDSHIFT_AOV_FILE_ENABLED] = direct
+                self.aovs = [aov]
+                with (
+                    self.subTest(direct=direct),
+                    self.assertRaisesRegex(ValueError, "no enabled AOVs"),
+                ):
+                    self._load().handle_rs_render(
+                        {
+                            "document_name": "main",
+                            "render_data_name": "Final",
+                            "output_path": os.path.join(temp_dir, "frame.png"),
+                            "force": True,
+                            "frame": 0,
+                            "sequence_frame": True,
+                        }
+                    )
+            self.assertEqual(os.listdir(temp_dir), [])
+        self.assertEqual(self.render_calls, [])
+        self.assertEqual(self.document.time_changes, [])
+        self.assertIs(self.document.GetActiveRenderData(), self.user_render_data)
+
+    def test_sequence_allows_disabled_aovs_without_writing_their_paths(self):
+        self._configured_render_data()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            aov = self._aov(os.path.join(temp_dir, "aov.png"))
+            aov.values[self.c4d.REDSHIFT_AOV_ENABLED] = False
+            self.aovs = [aov]
+            result = self._load().handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": os.path.join(temp_dir, "frame.png"),
+                    "force": True,
+                    "frame": 0,
+                    "sequence_frame": True,
+                }
+            )
+            self.assertEqual(os.listdir(temp_dir), ["frame.png"])
+        self.assertEqual(result["aovs"], [])
+
+    def test_sequence_requires_png_filter_and_extension_before_changing_time(self):
+        source = self._configured_render_data()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for output_format, filename in (
+                (self.c4d.FILTER_EXR, "frame.png"),
+                (self.c4d.FILTER_PNG, "frame.exr"),
+            ):
+                source[self.c4d.RDATA_FORMAT] = output_format
+                with self.subTest(filename=filename), self.assertRaisesRegex(ValueError, "PNG"):
+                    self._load().handle_rs_render(
+                        {
+                            "document_name": "main",
+                            "render_data_name": "Final",
+                            "output_path": os.path.join(temp_dir, filename),
+                            "force": True,
+                            "frame": 2,
+                            "sequence_frame": True,
+                        }
+                    )
+            self.assertEqual(os.listdir(temp_dir), [])
+        self.assertEqual(self.render_calls, [])
+        self.assertEqual(self.document.time_changes, [])
+        self.assertIs(self.document.GetActiveRenderData(), self.user_render_data)
+
+    def test_frame_failures_restore_time_evaluation_and_active_settings(self):
+        source = self._configured_render_data()
+        original_values = dict(source.values)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for failure in ("evaluate_false", "evaluate_exception", "render", "exception", "save"):
+                self.render_result = self.c4d.RENDERRESULT_OK
+                self.render_exception = None
+                self.save_result = self.c4d.IMAGERESULT_OK
+                self.document.execute_calls.clear()
+                if failure == "evaluate_false":
+                    self.document.execute_results = [False, True]
+                elif failure == "evaluate_exception":
+                    self.document.execute_results = [RuntimeError("evaluation failed"), True]
+                elif failure == "render":
+                    self.render_result = self.c4d.RENDERRESULT_FAILED
+                elif failure == "exception":
+                    self.render_exception = RuntimeError("injected render error")
+                else:
+                    self.save_result = 7
+                with self.subTest(failure=failure), self.assertRaises(RuntimeError):
+                    self._load().handle_rs_render(
+                        {
+                            "document_name": "main",
+                            "render_data_name": "Final",
+                            "output_path": os.path.join(temp_dir, "frame.png"),
+                            "force": True,
+                            "frame": 8,
+                            "sequence_frame": True,
+                        }
+                    )
+                self.assertEqual(self.document.GetTime(), FakeBaseTime(3, 30))
+                self.assertEqual(self.document.execute_calls[-1][0], FakeBaseTime(3, 30))
+                self.assertEqual(len(self.document.execute_calls), 2)
+                self.assertIs(self.document.GetActiveRenderData(), self.user_render_data)
+                self.assertEqual(source.values, original_values)
+            self.assertEqual(os.listdir(temp_dir), [])
+
+    def test_restore_evaluation_failure_still_restores_active_render_data_and_document(self):
+        target = FakeRenderDocument("target")
+        self.document.next = target
+        self.document_state.items = [self.document, target]
+        previous_render_data = self._render_data("Previous")
+        target.InsertRenderData(previous_render_data)
+        target.active_render_data = previous_render_data
+        self._configured_render_data(document=target)
+        target.execute_results = [True, False]
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            self.assertRaisesRegex(RuntimeError, "failed to evaluate"),
+        ):
+            self._load().handle_rs_render(
+                {
+                    "document_name": "target",
+                    "render_data_name": "Final",
+                    "output_path": os.path.join(temp_dir, "frame.png"),
+                    "force": True,
+                    "frame": 2,
+                    "sequence_frame": True,
+                }
+            )
+        self.assertEqual(target.GetTime(), FakeBaseTime(3, 30))
+        self.assertIs(target.GetActiveRenderData(), previous_render_data)
+        self.assertIs(self.document_state.active, self.document)
+
+    def test_legacy_render_does_not_change_or_evaluate_document_time(self):
+        self._configured_render_data()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = self._load().handle_rs_render(
+                {
+                    "document_name": "main",
+                    "render_data_name": "Final",
+                    "output_path": os.path.join(temp_dir, "beauty.png"),
+                    "force": True,
+                }
+            )
+        self.assertNotIn("frame", result)
+        self.assertEqual(self.document.time_changes, [])
+        self.assertEqual(self.document.execute_calls, [])
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ export const listTracksTool = defineTool({
   group: "animation",
   title: "List Animation Tracks",
   description:
-    "Enumerate CTracks on the resolved entity. Returns `{name, param_id, component, dtype, key_count}` per track so callers can pipe the results straight into get_keyframes / set_keyframe. Vector tracks (Position, Rotation, Scale) surface as separate entries per component.",
+    "Enumerate CTracks. Each entry includes name, full path ([[id,dtype,creator],...]), legacy param_id/component, dtype and key_count. Pass path alone with the entity handle to get/set/delete keyframes or delete_track. Vector channels have separate entries per component.",
   inputShape: {
     handle: handleSchema.describe("Entity whose animation tracks to enumerate."),
   },

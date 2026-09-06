@@ -3,15 +3,15 @@
   "name": "mcp-c4d-2025",
   "description": "MCP server for Cinema 4D — entity CRUD, parameter-level access, batched undo, security controls.",
   "repository": {
-    "url": "https://github.com/kumoproductions/mcp-cinema4d",
+    "url": "https://github.com/YihonW/mcp-c4d-2025",
     "source": "github"
   },
-  "version": "0.3.1",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-c4d-2025",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       }

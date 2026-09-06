@@ -12,3 +12,12 @@ __pycache__/
 # Ad-hoc scene dumps produced by dev-time exec_python — not part of the
 # shipping repo.
 scene_extract.json
+
+# Local scenes, maintenance backups and generated output are never published.
+.codex_ref_video1/
+artifacts/
+备份/
+*.c4d
+.env
+.env.*
+!.env.example

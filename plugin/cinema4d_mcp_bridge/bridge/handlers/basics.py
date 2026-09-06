@@ -78,6 +78,9 @@ def handle_get_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
         },
         "groups": ["basics", "entities", "transform"],
         "features": {
+            "rs_render_frame": True,
+            "animation_descid_paths": True,
+            "parameter_links": True,
             "node_materials": getattr(c4d, "NodeMaterial", None) is not None,
             "scene_nodes": callable(getattr(base_document, "GetSceneRepository", None)),
         },

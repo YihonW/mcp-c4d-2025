@@ -1,14 +1,18 @@
 # mcp-c4d-2025
 
-[![CI](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml/badge.svg)](https://github.com/kumoproductions/mcp-cinema4d/actions/workflows/ci.yml)
+[![CI](https://github.com/YihonW/mcp-c4d-2025/actions/workflows/ci.yml/badge.svg)](https://github.com/YihonW/mcp-c4d-2025/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D24-informational)](package.json)
 [![Cinema 4D](https://img.shields.io/badge/Cinema%204D-2025.3.2%20foundation%20verified-brightgreen)](./docs/COMPATIBILITY.md)
 
 Let an LLM drive Cinema 4D. **mcp-c4d-2025** is a foundation fork of `mcp-cinema4d` that targets Cinema 4D 2025.3.2. It connects an MCP stdio client to the Python bridge running inside Cinema 4D so the model can inspect and edit a scene through typed tools.
 
+Based on [kumo.productions' mcp-cinema4d](https://github.com/kumoproductions/mcp-cinema4d), with its MIT license and original copyright retained. This fork adds compatibility fixes, guarded Redshift workflows, and animation controls. Install from this source checkout; the version in this repository is not a claim that an npm release has been published.
+
 > [!IMPORTANT]
-> **The Cinema 4D 2025.3.2 foundation path is live-verified on Windows x64.** On 2026-08-08, the strict `npm run test:live:2025` suite completed with one passing test and no skips. This verifies only the documented connection/edit/undo/preview/save-copy path. The Redshift controls are offline-tested and require a successful `npm run test:live:redshift:2025` run before they can be called live-verified; the rest of the inherited catalog remains unverified unless explicitly listed in [Compatibility](./docs/COMPATIBILITY.md).
+> **Foundation and a scoped Redshift still-render path are live-verified on Windows x64 / Cinema 4D 2025.3.2.** See [Compatibility](./docs/COMPATIBILITY.md) for exact installed revisions and evidence. Version 0.4.0 adds full DescID animation selectors, explicit parameter links, and bounded PNG sequence jobs. Source availability is not a blanket compatibility claim; character skinning/IK and production animation rendering are not fully supported or verified.
+
+[中文使用说明与开发范围](./docs/WORKFLOW_ZH.md)
 
 **Good for:**
 
@@ -62,7 +66,7 @@ Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKE
 
 ## Tools
 
-76 tools across 17 groups are registered. Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
+79 tools across 17 groups are registered (78 exposed by default; arbitrary Python is opt-in). Catalog presence does not mean that a tool or group is compatible with Cinema 4D 2025.3.2. See [docs/TOOLS.md](./docs/TOOLS.md) for the generated reference and [Compatibility](./docs/COMPATIBILITY.md) for verification scope.
 
 | Group                            | Count | What's in it                                                                                                                                                                                                                       |
 | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,7 +81,7 @@ Codex uses this checkout as a local STDIO MCP server. Set the same `C4D_MCP_TOKE
 | Tag helpers · Animation          |   5   | `assign_material`; `list_tracks`, `get_keyframes`, `delete_keyframe`, `delete_track`.                                                                                                                                              |
 | Transforms · User data · MoGraph |   5   | `set_transform`; `add_user_data` / `list_user_data` / `remove_user_data`; `list_mograph_clones`.                                                                                                                                   |
 | Layers                           |   5   | Enumerate, create, assign, query, flag toggles (solo / view / render / locked / …).                                                                                                                                                |
-| Redshift                         |  11   | Capabilities; materials and PBR graphs; lights and camera; AOV list/upsert/remove/clear; RenderData configuration; synchronous Beauty + direct-AOV rendering.                                                                      |
+| Redshift                         |  14   | Capabilities; PBR materials; lights and camera; AOVs; RenderData; explicit-frame Beauty rendering; PNG sequence start/status/cancel/resume.                                                                                        |
 
 For a guarded Redshift workflow, call `rs_get_capabilities` first, then create or update materials, lights, and camera, configure AOVs and RenderData, and use `rs_render` last. Always pass the exact `document_name`. `rs_set_material_pbr` requires `replace_graph: true` before replacing an existing graph; `rs_clear_aovs` requires both the exact document name and `force: true`; `rs_render` is synchronous, requires `force: true`, and a client timeout does not cancel work already running inside Cinema 4D.
 
@@ -152,7 +156,7 @@ Run the second command only after the dry-run source and destination are correct
 | `exec_python is disabled on this C4D instance`                              | `exec_python` is off by default. Set `C4D_MCP_ENABLE_EXEC_PYTHON=1` in **both** the Cinema 4D launch environment **and** the MCP server `env` map, then restart C4D. See [Security](#security).                                                        |
 | `requires C4D_MCP_ENABLE_PYTHON_OPS=1 …`                                    | You tried to create or edit a Python-bearing entity (Python tag, Python generator, MoGraph Python effector, Python field, Xpresso Python operator). Off by default. Set `C4D_MCP_ENABLE_PYTHON_OPS=1` in the Cinema 4D launch environment and restart. |
 
-Still stuck? Open an [issue](https://github.com/kumoproductions/mcp-cinema4d/issues/new/choose) with the bridge log, your OS, Cinema 4D version, and the tool call that failed.
+Still stuck? Open an [issue](https://github.com/YihonW/mcp-c4d-2025/issues/new/choose) with a redacted bridge log, your OS, Cinema 4D version, and the tool call that failed. Remove tokens, private asset names, and personal paths before posting.
 
 ## Known limitations
 

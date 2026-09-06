@@ -62,6 +62,11 @@ import { rsSetMaterialPbrTool } from "./rs-set-material-pbr.js";
 import { rsListAovsTool } from "./rs-list-aovs.js";
 import { rsRemoveAovTool } from "./rs-remove-aov.js";
 import { rsRenderTool } from "./rs-render.js";
+import {
+  rsRenderSequenceTool,
+  rsSequenceControlTool,
+  rsSequenceStatusTool,
+} from "./rs-render-sequence.js";
 import { rsUpsertAovTool } from "./rs-upsert-aov.js";
 import { sampleTransformTool } from "./sample-transform.js";
 import { saveDocumentTool } from "./save-document.js";
@@ -187,6 +192,9 @@ export const ALL_TOOLS: AnyTool[] = [
   rsClearAovsTool,
   rsConfigureRenderTool,
   rsRenderTool,
+  rsRenderSequenceTool,
+  rsSequenceStatusTool,
+  rsSequenceControlTool,
 ];
 
 /**

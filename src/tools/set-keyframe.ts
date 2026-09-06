@@ -1,40 +1,39 @@
 import { z } from "zod";
 import { defineTool, textResult } from "./define-tool.js";
 import { handleSchema } from "./handle.js";
+import {
+  animationInteger,
+  animationSelectorShape,
+  validateAnimationSelector,
+} from "./animation-path.js";
+
+const inputShape = {
+  handle: handleSchema.describe("Entity whose parameter gets the keyframe."),
+  ...animationSelectorShape,
+  frame: animationInteger.describe("Frame number."),
+  value: z
+    .union([z.number().finite(), z.boolean()])
+    .describe("Value at this frame (rotations in radians)."),
+  fps: animationInteger.positive().optional().describe("Time base override (default: doc fps)."),
+  interp: z
+    .enum(["linear", "spline", "step"])
+    .optional()
+    .describe('Key interpolation (default "spline").'),
+  dtype: z
+    .enum(["real", "long", "bool", "vector"])
+    .optional()
+    .describe("Legacy param_id dtype override; omit with full path."),
+};
+const input = z.object(inputShape).superRefine(validateAnimationSelector);
 
 export const setKeyframeTool = defineTool({
   name: "set_keyframe",
   group: "crud",
   title: "Set Keyframe",
   description:
-    "Create or update a single keyframe on a resolved entity's parameter. Supports scalar (real/long/bool) and vector (x/y/z component) parameters; the bridge infers the dtype from the entity's description, or you can override it explicitly. Creates the CTrack automatically on first use.",
-  inputShape: {
-    handle: handleSchema.describe("Entity whose parameter gets the keyframe."),
-    param_id: z
-      .number()
-      .int()
-      .describe("Top-level description id (e.g. c4d.ID_BASEOBJECT_REL_ROTATION = 904)."),
-    component: z
-      .enum(["x", "y", "z"])
-      .optional()
-      .describe(
-        'Sub-component for Vector params. For C4D rotation (HPB) use "x" for H, "y" for P, "z" for B.',
-      ),
-    frame: z.number().int().describe("Frame number."),
-    value: z
-      .union([z.number(), z.boolean()])
-      .describe("Value at this frame (rotations in radians; bools coerce to 0/1)."),
-    fps: z.number().int().positive().optional().describe("Time base override (default: doc fps)."),
-    interp: z
-      .enum(["linear", "spline", "step"])
-      .optional()
-      .describe('Key interpolation (default "spline").'),
-    dtype: z
-      .enum(["real", "long", "bool", "vector"])
-      .optional()
-      .describe("Override the dtype when description lookup fails (rare)."),
-  },
+    "Create or update one keyframe. Use a full DescID path (including user data) or legacy param_id/component. Supports real/long/bool scalar channels and individual vector components. Creates the CTrack on first use.",
+  inputShape,
   async handler(args, client) {
-    return textResult(await client.request("set_keyframe", args, 15_000));
+    return textResult(await client.request("set_keyframe", input.parse(args), 15_000));
   },
 });

@@ -1,6 +1,6 @@
 {
   "name": "mcp-c4d-2025",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "TypeScript MCP server for Cinema 4D with generic entity CRUD, parameter-level access, undo-grouped batch ops, and security controls.",
   "keywords": [
     "3d",
@@ -13,9 +13,9 @@
     "model-context-protocol",
     "vfx"
   ],
-  "homepage": "https://github.com/kumoproductions/mcp-cinema4d#readme",
+  "homepage": "https://github.com/YihonW/mcp-c4d-2025#readme",
   "bugs": {
-    "url": "https://github.com/kumoproductions/mcp-cinema4d/issues"
+    "url": "https://github.com/YihonW/mcp-c4d-2025/issues"
   },
   "license": "MIT",
   "author": {
@@ -24,7 +24,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kumoproductions/mcp-cinema4d.git"
+    "url": "git+https://github.com/YihonW/mcp-c4d-2025.git"
   },
   "bin": {
     "mcp-c4d-2025": "dist/index.js"
@@ -49,6 +49,7 @@
     "test:live:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/foundation-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
     "test:live:redshift:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/redshift-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
     "test:watch": "vitest",
+    "test:live:workflow:2025": "node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/e2e/workflow-2025.test.ts'], { stdio: 'inherit', env: { ...process.env, C4D_MCP_REQUIRE_LIVE: '1' } }); process.exit(result.status ?? 1)\"",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

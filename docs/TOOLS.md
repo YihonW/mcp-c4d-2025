@@ -4,7 +4,7 @@ Generated from `src/tools/**` via `npm run docs:tools` — do not edit by hand. 
 
 Every CRUD tool identifies entities by a typed `handle` object — see [Entity handles](../README.md#entity-handles).
 
-76 tools across 17 groups.
+79 tools across 17 groups.
 
 ## Basics
 
@@ -39,12 +39,12 @@ Typed create / read / update / delete across every C4D entity kind.
 | `list_entities` | Enumerate scene entities of a given kind.                                                                 |
 | `describe`      | Dump all description parameters (id, name, cycle enum, current value) of a C4D entity resolved by handle. |
 | `get_params`    | Read parameter values on a C4D entity by id or DescID path.                                               |
-| `set_params`    | Atomically write parameter values (wrapped in one undo).                                                  |
+| `set_params`    | Write parameter values in one undo group.                                                                 |
 | `get_container` | Dump the raw BaseContainer of a C4D entity (including hidden keys that don't show up in `describe`, e.g.  |
 | `dump_shader`   | Recursively dump a shader (resolved from a handle) into JSON.                                             |
 | `create_entity` | Unified constructor for object / tag / material / shader / video_post.                                    |
 | `remove_entity` | Delete the resolved entity (wrapped in an undo step).                                                     |
-| `set_keyframe`  | Create or update a single keyframe on a resolved entity's parameter.                                      |
+| `set_keyframe`  | Create or update one keyframe.                                                                            |
 
 ## Shot setup
 
@@ -164,12 +164,12 @@ Read derived MoGraph state.
 
 Enumerate CTracks and edit keyframes.
 
-| Tool              | Description                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------ |
-| `list_tracks`     | Enumerate CTracks on the resolved entity.                                                  |
-| `get_keyframes`   | Read the keys on a specific animation track.                                               |
-| `delete_keyframe` | Remove keys from a CTrack.                                                                 |
-| `delete_track`    | Remove an entire CTrack (identified by `param_id` + optional `component`) from the target. |
+| Tool              | Description                                                                   |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `list_tracks`     | Enumerate CTracks.                                                            |
+| `get_keyframes`   | Read keys using a full path from list_tracks or legacy param_id/component.    |
+| `delete_keyframe` | Remove keys selected by full path or legacy param_id/component.               |
+| `delete_track`    | Remove an entire CTrack identified by full path or legacy param_id/component. |
 
 ## Layers
 
@@ -187,16 +187,19 @@ LayerObject CRUD and per-layer flag toggles.
 
 Validated high-level Redshift materials, lights, cameras, AOVs, and renders.
 
-| Tool                  | Description                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `rs_get_capabilities` | Report exact Redshift renderer, module, node-space, AOV, light, camera, and render support without mutating the scene. |
-| `rs_create_material`  | Create a Redshift node material, or reuse one exact-name match when requested.                                         |
-| `rs_create_light`     | Create or update a native Redshift light using only runtime-supported properties.                                      |
-| `rs_set_camera`       | Create or update a native Redshift camera and report unavailable requested settings.                                   |
-| `rs_set_material_pbr` | Patch supplied Redshift Standard Material PBR channels.                                                                |
-| `rs_list_aovs`        | List Redshift AOVs from the active or named RenderData.                                                                |
-| `rs_upsert_aov`       | Create or update one exact Redshift AOV type/name pair.                                                                |
-| `rs_remove_aov`       | Remove one indexed Redshift AOV when its expected name and type still match.                                           |
-| `rs_clear_aovs`       | Clear all Redshift AOVs from one explicitly named document.                                                            |
-| `rs_configure_render` | Create or update a validated Redshift RenderData without implicit activation.                                          |
-| `rs_render`           | Run a guarded synchronous Redshift Beauty+AOV render.                                                                  |
+| Tool                  | Description                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `rs_get_capabilities` | Report exact Redshift renderer, module, node-space, AOV, light, camera, and render support without mutating the scene.              |
+| `rs_create_material`  | Create a Redshift node material, or reuse one exact-name match when requested.                                                      |
+| `rs_create_light`     | Create or update a native Redshift light using only runtime-supported properties.                                                   |
+| `rs_set_camera`       | Create or update a native Redshift camera and report unavailable requested settings.                                                |
+| `rs_set_material_pbr` | Patch supplied Redshift Standard Material PBR channels.                                                                             |
+| `rs_list_aovs`        | List Redshift AOVs from the active or named RenderData.                                                                             |
+| `rs_upsert_aov`       | Create or update one exact Redshift AOV type/name pair.                                                                             |
+| `rs_remove_aov`       | Remove one indexed Redshift AOV when its expected name and type still match.                                                        |
+| `rs_clear_aovs`       | Clear all Redshift AOVs from one explicitly named document.                                                                         |
+| `rs_configure_render` | Create or update a validated Redshift RenderData without implicit activation.                                                       |
+| `rs_render`           | Run a guarded synchronous Redshift render, optionally at an explicit frame with time restoration.                                   |
+| `rs_render_sequence`  | Start a bounded background Beauty-only PNG sequence (1..300 unique frames), returning job_id immediately.                           |
+| `rs_sequence_status`  | Read this MCP session's sequence state, current frame, verified completed outputs, and any error without querying or modifying C4D. |
+| `rs_sequence_control` | Cancel stops scheduling after the in-flight frame finishes; it does not abort a C4D render.                                         |

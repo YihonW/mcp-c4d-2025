@@ -40,6 +40,8 @@ jobs:
           fi
 
   npm-publish:
+    # Fork releases are GitHub-only until registry ownership is configured explicitly.
+    if: github.repository == 'kumoproductions/mcp-cinema4d'
     name: Publish to npm
     runs-on: ubuntu-latest
     permissions:
@@ -92,6 +94,7 @@ jobs:
           npm publish --access public
 
   mcp-registry-publish:
+    if: github.repository == 'kumoproductions/mcp-cinema4d'
     name: Publish to MCP Registry
     needs: npm-publish
     runs-on: ubuntu-latest
@@ -153,6 +156,7 @@ jobs:
         run: mcp-publisher publish
 
   ghpkg-mirror:
+    if: github.repository == 'kumoproductions/mcp-cinema4d'
     name: Mirror to GitHub Packages
     needs: npm-publish
     runs-on: ubuntu-latest

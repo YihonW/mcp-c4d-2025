@@ -2,8 +2,8 @@
 
 Exposes the common topology / normalization ops that an LLM wants to invoke
 without knowing C4D's MCOMMAND_* constants. Handlers return either ``True``
-(for in-place ops like Make Editable) or a list of newly-produced objects
-(Current State to Object, Connect/Join) which are inserted into the active
+(for in-place ops like Triangulate) or a list of newly-produced objects
+(Make Editable, Current State to Object, Connect/Join) inserted into the active
 document so the caller can reference them via handles afterwards.
 """
 
@@ -93,8 +93,8 @@ def _is_producing_command(cmd: int) -> bool:
     """Commands that return *new* objects instead of mutating the source list.
 
     Only these need post-call ``InsertObject`` since SendModelingCommand
-    leaves them dangling outside the document. Per the 2026 SDK,
-    MAKEEDITABLE is in this category too — the original primitive is
+    leaves them dangling outside the document. Per the 2025.3 SDK,
+    MAKEEDITABLE is in this category too — the original primitive can be
     removed and a new polygon object is returned for the caller to insert.
     """
     producing = {
@@ -152,6 +152,12 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
     # either replace the source (returning new objects) or mutate in place
     # depending on the C4D build — can be re-resolved by name afterwards.
     source_names = [obj.GetName() for obj in resolved]
+    make_editable_id = getattr(c4d, "MCOMMAND_MAKEEDITABLE", -5)
+    # MAKEEDITABLE may delete the source. Capture its slot before the SDK
+    # call, when GetUp/GetPred are still valid and retain the original order.
+    source_slots = (
+        [(obj.GetUp(), obj.GetPred()) for obj in resolved] if cmd == make_editable_id else []
+    )
 
     doc.StartUndo()
     try:
@@ -166,8 +172,6 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
             raise RuntimeError("SendModelingCommand returned False")
 
         produced: list[c4d.BaseObject] = []
-        make_editable_id = getattr(c4d, "MCOMMAND_MAKEEDITABLE", -5)
-
         if _is_producing_command(cmd) and isinstance(result, list):
             new_objs = [n for n in result if isinstance(n, c4d.BaseObject)]
             # Only insert the new objects that aren't already in the doc.
@@ -177,22 +181,14 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
             anchor = resolved[0] if resolved else None
             replace_sources = cmd == make_editable_id
 
-            for new_obj in new_objs:
+            for idx, new_obj in enumerate(new_objs):
                 if new_obj.GetDocument() is not None:
                     continue  # C4D already placed it
                 if replace_sources:
                     # Pair with source by order so the new polygon takes
                     # the primitive's hierarchy slot.
-                    idx = new_objs.index(new_obj)
-                    src = resolved[idx] if idx < len(resolved) else None
-                    parent = src.GetUp() if src else None
-                    pred = src.GetPred() if src else None
-                    if parent is not None:
-                        new_obj.InsertUnder(parent)
-                    elif pred is not None:
-                        doc.InsertObject(new_obj, pred=pred)
-                    else:
-                        doc.InsertObject(new_obj)
+                    parent, pred = source_slots[idx] if idx < len(source_slots) else (None, None)
+                    doc.InsertObject(new_obj, parent=parent, pred=pred)
                 else:
                     if anchor is not None:
                         doc.InsertObject(new_obj, pred=anchor)
@@ -204,7 +200,7 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
             # still attached to the doc (i.e. C4D didn't already swap them).
             if replace_sources:
                 for src in resolved:
-                    if src.GetDocument() is not None:
+                    if src.IsAlive() and src not in new_objs and src.GetDocument() is not None:
                         doc.AddUndo(c4d.UNDOTYPE_DELETE, src)
                         src.Remove()
 
@@ -218,7 +214,7 @@ def handle_modeling_command(params: dict[str, Any]) -> dict[str, Any]:
         # look up by the source names again. Handles MAKEEDITABLE cases
         # where C4D swapped the object and SendModelingCommand returned
         # True/None instead of a list.
-        if not produced or any(p.GetDocument() is None for p in produced):
+        if not produced or any(not p.IsAlive() or p.GetDocument() is None for p in produced):
             recovered: list[c4d.BaseObject] = []
             for name in source_names:
                 matches = _find_objects_by_name(name)

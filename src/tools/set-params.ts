@@ -22,14 +22,20 @@ export const setParamsTool = defineTool({
   group: "crud",
   title: "Set Parameter Values",
   description:
-    "Atomically write parameter values (wrapped in one undo). Each entry is `{path, value}` where `path` is either an int id or a DescID path (e.g. [903, 'x'] = position.x). Lists of 3 numbers auto-coerce into c4d.Vector for vector-typed destinations. Returns `{applied: [{path, value}], errors: [{path, error}]}`.",
+    "Write parameter values in one undo group. Each entry is `{path, value}` where `path` is either an int id or a DescID path (e.g. [903, 'x'] = position.x). Lists of 3 numbers auto-coerce into c4d.Vector for vector-typed destinations. For DTYPE_BASELISTLINK parameters only, use `{link: <handle>}` to reference an entity or `{link: null}` to clear it. Link targets and destination types are validated before any writes. Returns `{applied: [{path, value}], errors: [{path, error}]}`; inspect errors for rejected writes.",
   inputShape: {
     handle: handleSchema.describe(handleDescription),
     values: z
       .array(
         z.object({
           path: pathSchema,
-          value: z.union([z.boolean(), z.number(), z.string(), z.array(z.number())]),
+          value: z.union([
+            z.boolean(),
+            z.number(),
+            z.string(),
+            z.array(z.number()),
+            z.strictObject({ link: handleSchema.nullable() }),
+          ]),
         }),
       )
       .describe("Writes to apply. Wrapped in an undo group."),
