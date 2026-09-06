@@ -295,15 +295,14 @@ def _set_or_connect(node_map: dict[str, object], node_id: str, port_id: str, val
         port_value = _coerce_pbr_port_value(value)
         target.SetPortValue(port_value)
         if port_id == _TEXTURE_COLOR_SPACE_PORT:
-            read_value = getattr(target, "GetPortValue", None)
-            if not callable(read_value):
-                read_value = getattr(target, "GetEffectivePortValue", None)
-            if not callable(read_value):
+            # Validate the authored attribute written by SetPortValue, not derived "value".
+            read_value = target.GetValue("net.maxon.description.data.base.defaultvalue")
+            if read_value != port_value:
                 raise RuntimeError(
-                    "texture color_space readback is unavailable; refusing graph mutation"
+                    "texture color_space readback mismatch: "
+                    f"expected={port_value!r} ({type(port_value).__name__}), "
+                    f"actual={read_value!r} ({type(read_value).__name__}); refusing graph mutation"
                 )
-            if read_value() != port_value:
-                raise RuntimeError("texture color_space readback mismatch; refusing graph mutation")
         return
     source = node_map.get(str(value["$id"]))
     if source is None:

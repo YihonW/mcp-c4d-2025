@@ -69,6 +69,7 @@ class FakePort:
         self.connections = []
         self.children = children or {}
         self.silent_ignore_invalid_value = False
+        self.derived_value_unavailable = False
 
     def IsValid(self):
         return True
@@ -79,6 +80,8 @@ class FakePort:
     def GetValue(self, attribute):
         if attribute == "net.maxon.node.attribute.enumvalues":
             return self.allowed_values
+        if attribute == "net.maxon.description.data.base.defaultvalue":
+            return self.value
         return None
 
     def FindChild(self, name):
@@ -96,7 +99,7 @@ class FakePort:
         self.value = value
 
     def GetPortValue(self):
-        return self.value
+        return None if self.derived_value_unavailable else self.value
 
     def Connect(self, target):
         self.connections.append(target)
@@ -195,6 +198,7 @@ class FakeGraph:
         self.clone_supported = True
         self.restore_raises = False
         self.silent_ignore_color_space = False
+        self.derived_color_space_unavailable = False
         self.raise_on_add_child = False
 
     @property
@@ -212,6 +216,9 @@ class FakeGraph:
             node.GetInputs().FindChild(f"{node.asset_id}.tex0").FindChild(
                 "colorspace"
             ).silent_ignore_invalid_value = self.silent_ignore_color_space
+            node.GetInputs().FindChild(f"{node.asset_id}.tex0").FindChild(
+                "colorspace"
+            ).derived_value_unavailable = self.derived_color_space_unavailable
         node.parent = self.root
         self.root.children.append(node)
         return node
@@ -936,7 +943,7 @@ class RedshiftMaterialsTest(unittest.TestCase):
         graph.silent_ignore_color_space = True
         before = graph.Clone()
 
-        with self.assertRaisesRegex(RuntimeError, "color_space.*readback"):
+        with self.assertRaisesRegex(RuntimeError, "color_space.*readback") as error:
             self.handle_rs_set_material_pbr(
                 {
                     "document_name": "user",
@@ -947,6 +954,30 @@ class RedshiftMaterialsTest(unittest.TestCase):
 
         self.assertEqual(graph.Clone(), before)
         self.assertEqual(graph.transactions[-2:], ["begin", "rollback"])
+        self.assertIn("expected='unknown' (str)", str(error.exception))
+        self.assertIn("actual=None (NoneType)", str(error.exception))
+
+    def test_color_space_readback_uses_authored_value_when_derived_value_is_unavailable(self):
+        material = self.add_pbr_material()
+        graph = self.graph_description.graph_for(material)
+        graph.derived_color_space_unavailable = True
+
+        result = self.handle_rs_set_material_pbr(
+            {
+                "document_name": "user",
+                "material": {"kind": "material", "name": "RS_Mat"},
+                "base_color": {"path": "C:/textures/base.exr"},
+            }
+        )
+
+        texture = next(node for node in graph.root.children if node.GetId() == "base_color_texture")
+        color_space = (
+            texture.GetInputs().FindChild(f"{NODE_ASSETS['texture']}.tex0").FindChild("colorspace")
+        )
+        self.assertIsNone(color_space.GetPortValue())
+        self.assertEqual(color_space.GetValue("net.maxon.description.data.base.defaultvalue"), "")
+        self.assertEqual(result["updated_channels"], ["base_color"])
+        self.assertEqual(graph.transactions[-2:], ["begin", "commit"])
 
 
 if __name__ == "__main__":
